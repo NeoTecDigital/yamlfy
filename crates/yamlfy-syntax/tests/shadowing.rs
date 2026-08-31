@@ -138,3 +138,27 @@ fn shadow_diagnostic_points_at_both_definitions() {
     assert!(primary.ends_with("basic-shadow.yml:6:13"), "{primary}");
     assert!(earlier.ends_with("basic-shadow.yml:4:12"), "{earlier}");
 }
+
+#[test]
+fn the_anchor_table_is_enumerable_by_a_downstream_pass() {
+    // The link pass consumes this table directly, so it is public surface and
+    // is covered here rather than only through alias resolution.
+    let (_, parsed) = parse("shadowing/shadow-three-times.yml");
+    let ast = &parsed.ast;
+    let defs = ast.anchors().defs();
+
+    assert_eq!(defs.len(), 3);
+    assert!(defs.iter().all(|d| &*d.name == "t"));
+    assert!(defs.iter().all(|d| d.document == 0));
+    assert_eq!(defs[0].shadows, None);
+    assert_eq!(defs[1].shadows, Some(defs[0].id));
+    assert_eq!(defs[2].shadows, Some(defs[1].id));
+
+    // Definitions are recorded in source order, which is what makes
+    // "most recent preceding definition" a well-defined phrase.
+    let lines: Vec<u32> = defs.iter().map(|d| d.span.start.line).collect();
+    assert!(lines.windows(2).all(|w| w[0] < w[1]), "{lines:?}");
+    for def in defs {
+        assert_eq!(ast.node(def.node).span.start.line, def.span.start.line);
+    }
+}

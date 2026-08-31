@@ -174,17 +174,6 @@ impl Diagnostic {
         }
     }
 
-    /// A diagnostic about a whole file rather than a range in it.
-    pub fn detached(code: Code, message: impl Into<String>) -> Self {
-        Diagnostic {
-            code,
-            severity: code.default_severity(),
-            message: message.into(),
-            span: None,
-            notes: Vec::new(),
-        }
-    }
-
     /// Attach a supporting location.
     #[must_use]
     pub fn with_note(mut self, message: impl Into<String>, span: Option<Span>) -> Self {

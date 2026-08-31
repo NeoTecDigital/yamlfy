@@ -72,13 +72,6 @@ impl AnchorTable {
         self.defs.get(id.index())
     }
 
-    /// The definition currently in scope for `name`, which is the most recent
-    /// preceding one in the current document.
-    #[must_use]
-    pub fn current(&self, name: &str) -> Option<&AnchorDef> {
-        self.latest.get(name).and_then(|id| self.get(*id))
-    }
-
     /// Forget every name binding. Called at each document boundary, because
     /// YAML anchors do not survive one.
     pub fn end_document(&mut self) {

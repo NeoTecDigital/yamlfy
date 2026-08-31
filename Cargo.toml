@@ -9,6 +9,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
 
 [workspace]
 members = ["crates/yamlfy-syntax", "crates/yamlfy-config", "crates/yamlfy-cli"]
@@ -20,6 +25,10 @@ edition = "2021"
 rust-version = "1.85"
 license = "GPL-3.0-or-later"
 authors = ["Richard Christopher"]
+repository = "https://github.com/NeoTecDigital/yamlfy"
+homepage = "https://github.com/NeoTecDigital/yamlfy"
+keywords = ["yaml", "graph", "database", "parser", "compiler"]
+categories = ["parser-implementations", "database-implementations"]
 
 [workspace.dependencies]
 yamlfy-syntax = { path = "crates/yamlfy-syntax", version = "0.1.0" }

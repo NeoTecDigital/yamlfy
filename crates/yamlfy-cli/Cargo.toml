@@ -6,9 +6,15 @@ name = "yamlfy-cli"
 description = "The yamlfy command-line interface."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# tracing-appender pulls in `time`, which requires 1.88; the library
+# crates still build on the workspace MSRV of 1.85.
+rust-version = "1.88"
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+exclude = ["tests"]
 
 [[bin]]
 name = "yamlfy"

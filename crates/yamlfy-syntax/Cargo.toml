@@ -9,6 +9,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+# Fixtures live at the workspace root, outside this crate, so the packaged
+# crate must not carry tests that cannot find them.
+exclude = ["tests"]
 
 [dependencies]
 saphyr-parser.workspace = true

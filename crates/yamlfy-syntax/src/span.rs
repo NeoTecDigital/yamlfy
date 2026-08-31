@@ -171,8 +171,16 @@ impl SourceFile {
 
     /// Convert a raw marker into a [`Pos`]. `char_base` and `line_base` rebase
     /// markers produced by a parser restarted part-way through the file.
-    #[must_use]
-    pub fn pos(&self, marker: &saphyr_parser::Marker, char_base: usize, line_base: u32) -> Pos {
+    ///
+    /// Crate-private on purpose: it is the only place a `saphyr-parser` type
+    /// appears in a signature, and leaking it would force every downstream
+    /// crate to depend on that parser at a matching version.
+    pub(crate) fn pos(
+        &self,
+        marker: &saphyr_parser::Marker,
+        char_base: usize,
+        line_base: u32,
+    ) -> Pos {
         let index = marker.index() + char_base;
         Pos {
             byte: self.byte_base + self.char_to_local_byte(index),
