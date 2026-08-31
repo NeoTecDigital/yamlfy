@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+target/
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
+
+# Local agent settings, not published
+.claude/
+scanner_cache/

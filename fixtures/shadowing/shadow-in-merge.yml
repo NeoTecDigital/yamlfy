@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# The merge source is chosen by the same positional rule: `user` merges the
+# SECOND `defaults`, not the first.
+--- !node
+first: &defaults
+  role: reader
+second: &defaults
+  role: writer
+user:
+  <<: *defaults
+  name: alice

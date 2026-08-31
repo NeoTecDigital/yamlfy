@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# A 4-node cycle n1 -> n2 -> n3 -> n4 -> n1, closed by nesting.
+--- !node &n1
+id: 1
+next: !node &n2
+  id: 2
+  next: !node &n3
+    id: 3
+    next: !node &n4
+      id: 4
+      next: *n1
+peers: [*n2, *n3, *n4]

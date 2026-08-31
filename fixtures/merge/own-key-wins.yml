@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# An own key wins over a merged key regardless of whether it is written
+# before or after the `<<` (D1.4: merge position is not significant).
+--- !node
+base: &base
+  a: from-base
+  b: from-base
+derived:
+  a: from-own-before
+  <<: *base
+  b: from-own-after

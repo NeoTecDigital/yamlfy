@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Two merge keys in one mapping. Error E0210: mapping keys must be unique;
+# use `<<: [*a, *b]` instead.
+--- !node
+a: &a
+  k: from-a
+b: &b
+  k: from-b
+derived:
+  <<: *a
+  <<: *b

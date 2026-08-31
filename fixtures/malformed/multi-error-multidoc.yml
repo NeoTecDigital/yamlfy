@@ -1,0 +1,7 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+--- !node
+a: [1, 2
+--- !node
+b: "unterminated
+--- !node
+c: ok

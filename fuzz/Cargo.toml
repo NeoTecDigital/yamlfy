@@ -1,0 +1,32 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+
+[package]
+name = "yamlfy-fuzz"
+description = "libFuzzer targets for the Yamlfication parser."
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+yamlfy-syntax = { path = "../crates/yamlfy-syntax" }
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_utf8"
+path = "fuzz_targets/parse_utf8.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1

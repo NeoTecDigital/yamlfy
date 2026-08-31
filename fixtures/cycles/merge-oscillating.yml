@@ -1,0 +1,18 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# The fixture that decides D1.6. Merge graph:
+#   a  <<: [b, c]      b  <<: [a, d]      c: {x: 1}      d: {x: 2}
+# Simultaneous Kleene iteration from the empty map oscillates with period 2:
+#   it1: a.x = 1, b.x = 2
+#   it2: a.x = 2, b.x = 1
+#   it3: a.x = 1, b.x = 2   ...
+# There is no least fixed point, so there is no order-independent value for
+# a.x. That is why cyclic merge is an error and not a fixed point (E0212).
+--- !node
+c: &c
+  x: 1
+d: &d
+  x: 2
+a: &a
+  b: &b
+    <<: [*a, *d]
+  <<: [*b, *c]

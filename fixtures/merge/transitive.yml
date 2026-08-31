@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# The merged-in view of a source is its RESOLVED view (D1.3), so `leaf`
+# receives `root`'s keys through `mid`.
+--- !node
+root: &root
+  r: 1
+mid: &mid
+  <<: *root
+  m: 2
+leaf:
+  <<: *mid
+  l: 3

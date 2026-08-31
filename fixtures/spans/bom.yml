@@ -1,0 +1,4 @@
+﻿# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Leading UTF-8 BOM; byte offsets stay relative to the original file.
+key: value
+other: 2

@@ -1,0 +1,5 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# The definition exists but comes AFTER the alias; positional resolution
+# means it is not visible, so this is an unknown anchor.
+use: *later
+def: &later 1

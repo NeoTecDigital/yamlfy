@@ -1,0 +1,20 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+
+[package]
+name = "yamlfy-config"
+description = "Layered configuration for Yamlfication: defaults, file, environment, flags."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+yamlfy-syntax.workspace = true
+serde.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

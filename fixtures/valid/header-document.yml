@@ -1,0 +1,14 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+%YAML 1.2
+--- !yamlfy/header
+version: 1
+namespace: acme::billing
+visibility: public
+mutability: readonly
+schema: !ref core::schema/invoice
+--- !node &invoice-001
+customer: !ref acme::crm/cust-42
+lines:
+  - &line-a {sku: A-1, qty: 2}
+  - &line-b {sku: B-2, qty: 1}
+first-line: *line-a

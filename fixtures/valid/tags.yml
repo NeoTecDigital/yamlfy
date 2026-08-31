@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+--- !node &invoice-002
+team: !node &team-fin
+  name: finance
+lines:
+  - !node &line-a {sku: A-1}
+  - !node &line-b {sku: B-2}
+refs: [*line-a, *line-b]
+owner: !edge {to: *team-fin, kind: owned_by, since: 2026-01-01}
+customer: !ref acme::crm/cust-42

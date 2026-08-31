@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# a -> b -> a. Requires a forward-declared shape: YAML aliases cannot refer
+# forward, so the cycle is closed by nesting b inside a.
+--- !node &a
+kind: a
+child: !node &b
+  kind: b
+  parent: *a
+back: *b

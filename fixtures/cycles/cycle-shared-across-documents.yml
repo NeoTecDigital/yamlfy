@@ -1,0 +1,8 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Two documents, each with its own independent cycle. Anchors do NOT cross
+# document boundaries, so the identical anchor name `loop` in both documents
+# names two distinct nodes.
+--- &loop
+self: *loop
+--- &loop
+self: *loop

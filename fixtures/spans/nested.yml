@@ -1,0 +1,7 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+root:
+  seq:
+    - a
+    - nested:
+        deep: value
+  flow: {x: [1, {y: 2}]}

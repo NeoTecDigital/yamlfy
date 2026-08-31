@@ -1,0 +1,14 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+plain: unquoted
+single: 'single quoted'
+double: "double \"escaped\" quoted"
+literal: |
+  line one
+  line two
+folded: >
+  folded
+  text
+empty:
+null-value: ~
+numbers: [0, -1, 3.14, 1e3]
+booleans: [true, false]

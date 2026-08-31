@@ -1,0 +1,15 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Legal: the merge graph is a DAG, not a tree. d merges b and c, both of
+# which merge a. a is reached twice; left-biased union makes that idempotent.
+--- !node
+a: &a
+  shared: from-a
+  only-a: 1
+b: &b
+  <<: *a
+  shared: from-b
+c: &c
+  <<: *a
+  shared: from-c
+d: &d
+  <<: [*b, *c]

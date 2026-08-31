@@ -1,0 +1,5 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Control case: distinct anchor names, no shadowing, no W0300 expected.
+a: &p 1
+b: &q 2
+c: [*p, *q]

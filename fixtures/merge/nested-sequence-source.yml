@@ -1,0 +1,7 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# A sequence of sequences is not a legal merge source. Error E0211.
+--- !node
+a: &a
+  k: 1
+derived:
+  <<: [[*a]]

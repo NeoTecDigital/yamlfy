@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# m1 -> m2 -> m3 -> m1 through merge edges only. Error (E0212).
+--- !node &m1
+a: 1
+inner: !node &m2
+  b: 2
+  deeper: !node &m3
+    c: 3
+    <<: *m1
+  <<: *m3
+<<: *m2

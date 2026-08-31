@@ -1,0 +1,6 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# A node that aliases itself. The anchor is registered when the node STARTS,
+# so `*self` inside the node it names is legal and produces a 1-cycle.
+--- !node &self
+name: self-referential
+me: *self

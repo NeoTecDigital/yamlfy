@@ -1,0 +1,6 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Two errors in one file; both must be reported, not just the first.
+a: 1
+a: 2
+b: 3
+b: 4

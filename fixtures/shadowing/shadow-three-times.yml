@@ -1,0 +1,8 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Three definitions, three aliases, three distinct targets.
+d1: &t one
+u1: *t
+d2: &t two
+u2: *t
+d3: &t three
+u3: *t

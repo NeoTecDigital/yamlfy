@@ -1,0 +1,6 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# A sequence that contains itself.
+--- &ring
+- first
+- *ring
+- last

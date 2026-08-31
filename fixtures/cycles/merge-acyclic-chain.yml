@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Legal: merge is transitive. c inherits b's keys, and through b, a's keys.
+--- !node
+a: &a
+  a: 1
+b: &b
+  <<: *a
+  b: 2
+c: &c
+  <<: *b
+  c: 3

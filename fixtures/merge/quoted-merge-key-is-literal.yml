@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# A quoted "<<" is an ordinary string key, not a merge key (D1.1), and can
+# therefore coexist with a real merge key in the same mapping.
+--- !node
+base: &base
+  a: 1
+derived:
+  <<: *base
+  "<<": literal-key

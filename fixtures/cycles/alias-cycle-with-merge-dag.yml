@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# A data cycle and an acyclic merge graph in one document. Legal: only cycles
+# THROUGH merge edges are errors; cyclic data is the point of the system.
+--- !node
+base: &base
+  kind: base
+ring: &ring
+  <<: *base
+  next: *ring

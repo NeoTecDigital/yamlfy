@@ -1,0 +1,3 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Deliberately invalid UTF-8 in the value below.
+key: ÿþý

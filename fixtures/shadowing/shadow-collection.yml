@@ -1,0 +1,6 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# The shadowed definitions are collections, not scalars.
+a: &c [1, 2]
+p: *c
+b: &c {k: v}
+q: *c

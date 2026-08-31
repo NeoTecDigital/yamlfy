@@ -1,0 +1,6 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# The value of `<<` need not be an alias; an inline mapping is a legal source.
+--- !node
+derived:
+  <<: {a: 1, b: 2}
+  b: 3

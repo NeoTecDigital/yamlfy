@@ -1,0 +1,25 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+
+[package]
+name = "yamlfy-cli"
+description = "The yamlfy command-line interface."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "yamlfy"
+path = "src/main.rs"
+
+[dependencies]
+yamlfy-syntax.workspace = true
+yamlfy-config.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+
+[lints]
+workspace = true

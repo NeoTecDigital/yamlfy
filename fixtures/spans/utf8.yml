@@ -1,0 +1,7 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Multi-byte scalars: char offsets from the event stream must be converted
+# to byte offsets before they can index the source.
+ascii: plain
+accents: héllo wörld
+cjk: 日本語のキー
+emoji: "🜁 🜂 🜃 🜄"

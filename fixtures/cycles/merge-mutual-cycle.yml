@@ -1,0 +1,8 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# a merges b, b merges a. Merge 2-cycle. Error (E0212).
+--- !node &a
+x: 1
+child: !node &b
+  y: 2
+  <<: *a
+<<: *b

@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Shadowing is positional, not lexical: the inner redefinition of `v` leaks
+# out of the nested mapping and governs every later alias in the document.
+outer-def: &v outer
+inner:
+  use-before: *v
+  inner-def: &v inner
+  use-after: *v
+after-block: *v

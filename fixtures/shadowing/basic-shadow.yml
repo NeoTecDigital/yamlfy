@@ -1,0 +1,7 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# `x` is defined twice. first-use binds to the first definition, second-use
+# to the second. The two aliases MUST resolve to different arena nodes.
+first-def: &x 1
+first-use: *x
+second-def: &x 2
+second-use: *x

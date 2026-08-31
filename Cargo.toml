@@ -1,0 +1,46 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+
+[package]
+name = "yamlfication"
+description = "Umbrella crate for the Yamlfication compiler."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[workspace]
+members = ["crates/yamlfy-syntax", "crates/yamlfy-config", "crates/yamlfy-cli"]
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["Richard Christopher"]
+
+[workspace.dependencies]
+yamlfy-syntax = { path = "crates/yamlfy-syntax", version = "0.1.0" }
+yamlfy-config = { path = "crates/yamlfy-config", version = "0.1.0" }
+saphyr-parser = "0.0.12"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "json"] }
+tracing-appender = "0.2.5"
+clap = { version = "4.6", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "1.1"
+thiserror = "2.0"
+
+[dependencies]
+yamlfy-syntax.workspace = true
+yamlfy-config.workspace = true
+
+[lints]
+workspace = true
+
+[workspace.lints.rust]
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

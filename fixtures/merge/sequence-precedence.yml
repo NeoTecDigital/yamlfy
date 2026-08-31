@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# In `<<: [p, q]`, p wins over q.
+--- !node
+p: &p
+  k: from-p
+q: &q
+  k: from-q
+  r: from-q
+derived:
+  <<: [*p, *q]

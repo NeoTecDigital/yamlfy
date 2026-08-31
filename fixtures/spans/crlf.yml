@@ -1,0 +1,7 @@
+# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# CRLF line endings; line and column must not drift.
+first: 1
+second: 2
+third:
+  - a
+  - b
