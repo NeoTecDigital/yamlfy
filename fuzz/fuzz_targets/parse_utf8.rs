@@ -1,4 +1,5 @@
-// Written by Richard Christopher, Copyright 2026 Richard Christopher
+// Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The same property over well-formed UTF-8, which reaches deeper into the
 //! parser than random bytes usually do.

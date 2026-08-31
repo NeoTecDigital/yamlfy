@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # The merge source is chosen by the same positional rule: `user` merges the
 # SECOND `defaults`, not the first.
 --- !node

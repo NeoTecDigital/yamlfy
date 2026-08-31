@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # Shadowing is positional, not lexical: the inner redefinition of `v` leaks
 # out of the nested mapping and governs every later alias in the document.
 outer-def: &v outer

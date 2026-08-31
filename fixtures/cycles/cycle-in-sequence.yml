@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # A sequence that contains itself.
 --- &ring
 - first

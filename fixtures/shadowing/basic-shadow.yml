@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # `x` is defined twice. first-use binds to the first definition, second-use
 # to the second. The two aliases MUST resolve to different arena nodes.
 first-def: &x 1

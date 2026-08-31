@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # Anchors are cleared at every document boundary, so the same name in two
 # documents is two unrelated anchors. Neither alias can see the other's node.
 --- &n doc-one

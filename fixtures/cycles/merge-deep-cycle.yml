@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # m1 -> m2 -> m3 -> m1 through merge edges only. Error (E0212).
 --- !node &m1
 a: 1

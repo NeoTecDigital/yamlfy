@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # An own key wins over a merged key regardless of whether it is written
 # before or after the `<<` (D1.4: merge position is not significant).
 --- !node

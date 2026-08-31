@@ -1,4 +1,5 @@
-// Written by Richard Christopher, Copyright 2026 Richard Christopher
+// Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Cycle-safe traversal and a flat rendering of the arena.
 //!

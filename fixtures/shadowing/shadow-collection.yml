@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # The shadowed definitions are collections, not scalars.
 a: &c [1, 2]
 p: *c

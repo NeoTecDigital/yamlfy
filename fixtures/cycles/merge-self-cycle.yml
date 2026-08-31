@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # `<<` pointing at the mapping that contains it: a merge 1-cycle.
 # Decision D1.6: cyclic merge is an error (E0212), reported by the link pass.
 --- !node &a

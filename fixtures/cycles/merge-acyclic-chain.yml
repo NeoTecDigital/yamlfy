@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # Legal: merge is transitive. c inherits b's keys, and through b, a's keys.
 --- !node
 a: &a

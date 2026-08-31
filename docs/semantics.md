@@ -1,4 +1,5 @@
-<!-- Written by Richard Christopher, Copyright 2026 Richard Christopher -->
+<!-- Written by Richard Christopher, Copyright 2026 NeoTec, LLC -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
 # Yamlfication — Semantic Decisions
 
@@ -452,9 +453,12 @@ Recorded, not decided. Each needs an explicit answer before the pass that depend
   would accept `.yml`, `.yaml` and `.yfy` alike. It only becomes a syntax decision if
   Yamlfication later adds constructs that a YAML parser would reject, at which point the
   event-level foundation here stops applying. **Needs your answer before `discover`.**
-* **`<ORG>` for the copyright header.** Files currently carry
-  `Written by Richard Christopher, Copyright 2026 Richard Christopher`. The plan's own
-  open item. **Needs your answer.**
+* **Which GNU licence.** The project ships GPL-3.0-or-later. That choice has a
+  consequence the plan's Phase 3 will run into: a Go server layer over a C ABI into
+  this core is a combined work under the GPL, so the server must be GPL too. If the
+  core is meant to be embeddable in closed software, that wants **LGPL-3.0**; if it is
+  meant to stay copyleft across a network service, that wants **AGPL-3.0**.
+  **Needs your answer before Phase 3, not before Phase 1.**
 * **Does `!ref` participate in merge?** D2.6 confines `<<` to one document. If
   cross-document inheritance is wanted, `<<: !ref ns::path` needs its own decision —
   including whether D1.8's cycle rule then spans files.

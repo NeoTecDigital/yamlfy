@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # Two merge keys in one mapping. Error E0210: mapping keys must be unique;
 # use `<<: [*a, *b]` instead.
 --- !node

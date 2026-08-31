@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # Merge is shallow (D1.5): `nested` is taken whole from the own mapping,
 # it is NOT deep-merged with the base's `nested`.
 --- !node

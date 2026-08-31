@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # The definition exists but comes AFTER the alias; positional resolution
 # means it is not visible, so this is an unknown anchor.
 use: *later

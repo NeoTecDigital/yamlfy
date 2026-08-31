@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # Aliases never cross a document boundary, so every merge fixture keeps its
 # source and its consumer in the SAME document.
 --- !node

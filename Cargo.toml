@@ -1,4 +1,5 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 [package]
 name = "yamlfication"
@@ -17,7 +18,7 @@ exclude = ["fuzz"]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later"
 authors = ["Richard Christopher"]
 
 [workspace.dependencies]

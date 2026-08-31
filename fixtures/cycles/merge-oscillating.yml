@@ -1,4 +1,4 @@
-# Written by Richard Christopher, Copyright 2026 Richard Christopher
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # The fixture that decides D1.6. Merge graph:
 #   a  <<: [b, c]      b  <<: [a, d]      c: {x: 1}      d: {x: 2}
 # Simultaneous Kleene iteration from the empty map oscillates with period 2:
