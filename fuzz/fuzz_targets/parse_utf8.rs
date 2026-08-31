@@ -4,14 +4,21 @@
 //! The same property over well-formed UTF-8, which reaches deeper into the
 //! parser than random bytes usually do.
 //!
-//! Run with a nightly toolchain, seeding from the real corpus so the fuzzer
-//! starts from valid YAML rather than noise:
+//! Run with a nightly toolchain:
 //!
 //! ```sh
-//! cargo +nightly fuzz run parse_utf8 fixtures
+//! cargo +nightly fuzz run parse_utf8 -- -max_total_time=90
 //! ```
 //!
-//! The seed corpus is `fixtures/` itself; it is not copied.
+//! Do NOT pass `fixtures/` as the corpus directory. libFuzzer *writes*
+//! new inputs into its corpus dir, which would bury the 47 curated
+//! fixtures under thousands of hash-named files. To seed from them,
+//! copy first:
+//!
+//! ```sh
+//! mkdir -p fuzz/corpus/parse_utf8
+//! cp fixtures/*/*.yml fuzz/corpus/parse_utf8/
+//! ```
 
 #![no_main]
 

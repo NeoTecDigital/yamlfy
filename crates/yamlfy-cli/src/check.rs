@@ -18,8 +18,12 @@ pub fn run(config: &Config, files: &[impl AsRef<Path>], dump: bool) -> ExitCode 
     let mut errors = 0usize;
     let mut warnings = 0usize;
     let mut out = std::io::stdout().lock();
+    // One map for every file, not one per file. `FileId` is assigned on
+    // registration, so a per-file map makes every file `FileId(0)` and
+    // diagnostics from two files can never coexist in one collection — which
+    // the cross-file passes require.
+    let mut sources = SourceMap::new();
     for path in files {
-        let mut sources = SourceMap::new();
         let parsed = parse_file(&mut sources, path.as_ref(), &options);
         info!(path = %path.as_ref().display(), nodes = parsed.ast.nodes().len(), "parsed");
         let _ = write!(out, "{}", parsed.diagnostics.render(&sources));

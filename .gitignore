@@ -9,3 +9,13 @@ fuzz/coverage/
 # Local agent settings, not published
 .claude/
 scanner_cache/
+
+# Never point libFuzzer at fixtures/ (see fuzz/fuzz_targets/*.rs). It writes flat, at the TOP of its corpus dir, with 40-char SHA1-hex
+# names -- so the guard has to match hex at any depth, and must never match
+# `.yml`, which is what every real fixture is.
+fixtures/**/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*
+fixtures/**/crash-*
+fixtures/**/leak-*
+fixtures/**/oom-*
+fixtures/**/timeout-*
+!fixtures/**/*.yml

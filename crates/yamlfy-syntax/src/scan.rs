@@ -22,8 +22,21 @@ pub(crate) struct TokenRange {
 }
 
 /// Whether `c` may appear in an anchor or alias name (YAML `ns-anchor-char`).
+///
+/// This mirrors `saphyr_parser::char_traits::is_anchor_char` exactly. It must not
+/// be written as `!c.is_whitespace()`: Rust's `char::is_whitespace` is the Unicode
+/// `White_Space` property, which is far wider than the six characters YAML excludes.
+/// Using it truncates any anchor whose name contains U+00A0, U+2000-200A, U+3000 and
+/// the rest — silently, because the name is only recovered text and the
+/// `AnchorId` binding still succeeds. The result is a wrong node identifier and a
+/// fabricated `W0300`, with neither `E0120` nor `E0121` able to see it.
 fn is_name_char(c: char) -> bool {
-    !c.is_whitespace() && !matches!(c, ',' | '[' | ']' | '{' | '}')
+    // is_yaml_non_space: not a line break, not a BOM, not a blank.
+    !matches!(c, '\n' | '\r' | '\u{FEFF}' | ' ' | '\t')
+        // is_flow
+        && !matches!(c, ',' | '[' | ']' | '{' | '}')
+        // is_z
+        && c != '\0'
 }
 
 /// Whether a property token may start at a character preceded by `prev`.

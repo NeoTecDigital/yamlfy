@@ -436,10 +436,27 @@ parsed and kept.
 `yamlfy-syntax`; they need resolved aliases, which is the link pass's job. They are
 listed so the numbering is stable.
 
-**Duplicate key identity.** Two keys collide when they are both scalars, have the same
-text, and have the same merge role (D1.1). Non-scalar keys are not compared: deciding
-whether two mappings are the same key needs resolved values, which the parser does not
-have. Fixture: `fixtures/malformed/duplicate-key.yml`.
+**Duplicate key identity.** Merge keys and ordinary keys are counted separately,
+because D1.7 bounds merge keys by *role* while D1.1 identifies ordinary keys by
+*text*.
+
+- Two **ordinary** keys collide when they are both scalars with the same text.
+- Two **merge-role** keys collide whatever their key text: `<<:` together with
+  `!!merge zz:` is two merge keys in one mapping (`E0210`), even though the texts
+  differ. Counting them by text would let that pair through, and the link pass
+  would then receive a mapping with two merge sources and no defined precedence
+  between them — the ambiguity D1.7 exists to forbid.
+
+Holding the two apart is also what preserves D1.1's coexistence rule: a literal
+`"<<"` key never meets the real merge key in the same table, so the two remain
+different keys.
+
+Non-scalar keys are not compared: deciding whether two mappings are the same key
+needs resolved values, which the parser does not have. A merge tag on a
+*non-scalar* key is not a merge key (D1.1) and is currently reported by nothing —
+see §5.
+
+Fixture: `fixtures/malformed/duplicate-key.yml`.
 
 ---
 
@@ -447,18 +464,31 @@ have. Fixture: `fixtures/malformed/duplicate-key.yml`.
 
 Recorded, not decided. Each needs an explicit answer before the pass that depends on it.
 
-* **File extension.** Everything above is native YAML, which is the plan's stated
-  advantage: zero custom lexing. A distinct `.yfy` extension is therefore a *naming and
-  discovery* decision, not a syntax one, and is cheap — `discover` (Phase 1 step 3)
-  would accept `.yml`, `.yaml` and `.yfy` alike. It only becomes a syntax decision if
-  Yamlfication later adds constructs that a YAML parser would reject, at which point the
-  event-level foundation here stops applying. **Needs your answer before `discover`.**
+* ~~**File extension.**~~ **Answered: `.yml`/`.yaml`.** Everything above is native
+  YAML — zero custom lexing — so a distinct `.yfy` extension would be a *naming and
+  discovery* decision, not a syntax one, and is not adopted. `discover` filters by a
+  configurable extension list, so adopting `.yfy` later is a config default rather
+  than a code change. **Revisit trigger:** the first construct a YAML parser would
+  reject. At that moment the event-level foundation here stops applying and `.yfy`
+  becomes mandatory rather than optional.
 * **Which GNU licence.** The project ships GPL-3.0-or-later. That choice has a
   consequence the plan's Phase 3 will run into: a Go server layer over a C ABI into
   this core is a combined work under the GPL, so the server must be GPL too. If the
   core is meant to be embeddable in closed software, that wants **LGPL-3.0**; if it is
   meant to stay copyleft across a network service, that wants **AGPL-3.0**.
   **Needs your answer before Phase 3, not before Phase 1.**
-* **Does `!ref` participate in merge?** D2.6 confines `<<` to one document. If
-  cross-document inheritance is wanted, `<<: !ref ns::path` needs its own decision —
-  including whether D1.8's cycle rule then spans files.
+* ~~**Does `!ref` participate in merge?**~~ **Answered: yes.** D2.6 confines `<<` to
+  one document *by operand*, not by operator: `<<: *alias` stays document-local and
+  `<<: !ref ns::path` crosses files. D1.6 gains `!ref` as a legal merge source, and
+  **D1.8's cycle rule spans files** — one inheritance graph, one cycle rule, so a
+  cycle formed half by `<<` and half by `!ref` is still `E0212`. This requires a
+  normative total file order (canonicalized-path lexicographic); without one,
+  `readdir` order decides which back edge recovery drops, and therefore which
+  *other* diagnostics get reported. To be written up as D4 with the `extends`
+  keyword, which inherits the same values but additionally retains ancestry as a
+  queryable `is_a` edge.
+* **A merge tag on a non-scalar key has no diagnostic.** D1.1 says a merge key is a
+  *scalar* tagged `!!merge`, so `!!merge [k]: 1` is correctly not a merge key — but
+  it then becomes an ordinary non-scalar key, which duplicate detection also skips,
+  so two of them in one mapping are silent. Needs either `E0211` or a new code.
+  **Needs an answer before `link`.**
