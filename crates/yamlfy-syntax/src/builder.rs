@@ -6,6 +6,16 @@
 //! The builder is iterative. Collections are assembled on one shared scratch
 //! stack and flushed into contiguous side-table ranges when their end event
 //! arrives, so nesting depth costs heap, never call stack.
+//!
+//! # The import prelude
+//!
+//! A file whose header imports another is parsed from a stream that begins with
+//! a synthesised document declaring each imported name (D6.7). That document is
+//! the parser's business and nobody else's: its events build no arena nodes and
+//! no [`Document`](crate::ast::Document), and no span is ever taken from it.
+//! All it does is make the scanner bind an alias, and register one
+//! [`AnchorDef`](crate::anchor::AnchorDef) per imported name carrying the span
+//! of the `&name` token **in the file that wrote it**.
 
 use saphyr_parser::Event;
 
@@ -15,8 +25,9 @@ use crate::ast::{
 };
 use crate::diagnostic::{Code, Diagnostic, Diagnostics, SeverityMap};
 use crate::mapping;
+use crate::parse::Import;
 use crate::scan;
-use crate::span::{Pos, SourceFile, Span};
+use crate::span::{Pos, Rebase, SourceFile, Span};
 
 #[derive(Clone, Copy)]
 enum FrameKind {
@@ -30,6 +41,24 @@ struct Frame {
     start: Pos,
     anchor: Option<AnchorId>,
     tag: Option<u32>,
+}
+
+/// The synthetic document that installs a header's imports.
+struct Prelude {
+    /// The definitions to install, in authored order — the same order their
+    /// anchors appear in the synthetic text.
+    imports: Vec<Import>,
+    /// How many have been installed in the current parser segment.
+    installed: usize,
+    /// Whether the events arriving now are still the prelude's.
+    active: bool,
+}
+
+impl Prelude {
+    fn new(imports: Vec<Import>) -> Self {
+        let active = !imports.is_empty();
+        Prelude { imports, installed: 0, active }
+    }
 }
 
 /// Incrementally turns events into an [`Ast`].
@@ -46,15 +75,23 @@ pub(crate) struct Builder<'a> {
     started: bool,
     segment: u32,
     char_base: usize,
-    line_base: u32,
+    rebase: Rebase,
+    prelude: Prelude,
     prev: (usize, usize),
     last_anchor_at: Option<usize>,
 }
 
 impl<'a> Builder<'a> {
-    pub(crate) fn new(file: &'a SourceFile, severities: SeverityMap) -> Self {
+    pub(crate) fn new(
+        file: &'a SourceFile,
+        severities: SeverityMap,
+        imports: Vec<Import>,
+        rebase: Rebase,
+    ) -> Self {
+        let mut ast = Ast::new(file.id());
+        ast.anchors.begin_prelude();
         Builder {
-            ast: Ast::new(file.id()),
+            ast,
             file,
             diags: Diagnostics::with_severities(severities),
             frames: Vec::new(),
@@ -66,7 +103,8 @@ impl<'a> Builder<'a> {
             started: false,
             segment: 0,
             char_base: 0,
-            line_base: 0,
+            rebase,
+            prelude: Prelude::new(imports),
             prev: (0, 0),
             last_anchor_at: None,
         }
@@ -82,32 +120,41 @@ impl<'a> Builder<'a> {
         (self.ast, self.diags)
     }
 
-    /// Begin a new parser segment after error recovery. `char_base` and
-    /// `line_base` rebase every marker the restarted parser will produce.
-    pub(crate) fn restart(&mut self, char_base: usize, line_base: u32) {
+    /// Begin a new parser segment after error recovery. `char_base` is where in
+    /// the file the new parser starts and `rebase` corrects every marker it
+    /// will produce. The restarted stream carries the import prelude again, so
+    /// the same imports are re-installed rather than shadowing the first set.
+    pub(crate) fn restart(&mut self, char_base: usize, rebase: Rebase) {
         self.frames.clear();
         self.pending.clear();
         self.doc_root = None;
         self.segment += 1;
         self.char_base = char_base;
-        self.line_base = line_base;
+        self.rebase = rebase;
         self.prev = (char_base, char_base);
+        self.prelude.installed = 0;
+        self.prelude.active = !self.prelude.imports.is_empty();
+        self.ast.anchors.begin_prelude();
     }
 
     fn span(&self, raw: saphyr_parser::Span) -> Span {
         Span {
             file: self.file.id(),
-            start: self.file.pos(&raw.start, self.char_base, self.line_base),
-            end: self.file.pos(&raw.end, self.char_base, self.line_base),
+            start: self.file.pos(&raw.start, self.rebase),
+            end: self.file.pos(&raw.end, self.rebase),
         }
     }
 
     fn bounds(&self, raw: saphyr_parser::Span) -> (usize, usize) {
-        (self.char_base + raw.start.index(), self.char_base + raw.end.index())
+        (self.rebase.char(raw.start.index()), self.rebase.char(raw.end.index()))
     }
 
     /// Feed one event.
     pub(crate) fn event(&mut self, event: &Event<'_>, raw: saphyr_parser::Span) {
+        if self.prelude.active {
+            self.prelude_event(event);
+            return;
+        }
         let span = self.span(raw);
         let bounds = self.bounds(raw);
         match event {
@@ -135,6 +182,35 @@ impl<'a> Builder<'a> {
             Event::SequenceEnd | Event::MappingEnd => self.close(span),
         }
         self.prev = bounds;
+    }
+
+    /// Consume one event of the synthetic import prelude.
+    ///
+    /// Only two of them mean anything: an anchored scalar installs the next
+    /// import, and the document end hands the stream back to the file itself.
+    /// Everything else — the document start, the flow sequence holding the
+    /// anchors — is scaffolding and is dropped, which is what keeps the prelude
+    /// out of the arena, out of `documents()` and out of every span.
+    fn prelude_event(&mut self, event: &Event<'_>) {
+        match event {
+            Event::Scalar(_, _, anchor, _) if *anchor != 0 => self.install_import(*anchor),
+            Event::DocumentEnd | Event::StreamEnd => self.close_prelude(),
+            _ => {}
+        }
+    }
+
+    fn install_import(&mut self, raw: usize) {
+        let Some(import) = self.prelude.imports.get(self.prelude.installed) else { return };
+        let (name, span) = (import.name.clone(), import.span);
+        self.prelude.installed += 1;
+        let id = self.ast.anchors.import((self.segment, raw), &name, span);
+        self.warn_shadowed(id);
+    }
+
+    fn close_prelude(&mut self) {
+        self.prelude.active = false;
+        self.prev = (self.char_base, self.char_base);
+        self.last_anchor_at = None;
     }
 
     fn document_start(&mut self, explicit: bool, span: Span) {
@@ -198,9 +274,27 @@ impl<'a> Builder<'a> {
         NodeKind::Mapping(last_index(self.ast.maps.len()))
     }
 
+    /// Bind one alias.
+    ///
+    /// **The document's own table answers first.** A document starts with the
+    /// bindings its header imported and nothing else (D2.6, D6.7), and
+    /// [`AnchorTable::in_document`] is the table that says so. The parser's
+    /// anchor ids are namespaced by the stream and outlive a document boundary,
+    /// so consulting them first would bind `*Name` in the third document to a
+    /// `&Name` that died with the second — reporting `E0130` against an alias
+    /// whose name is imported and perfectly in scope.
+    ///
+    /// The parser's answer is the fallback, and that is what keeps `E0130`
+    /// firing: a name this document never bound but the stream still knows is
+    /// precisely an alias that crossed a document boundary, and
+    /// [`Builder::check_document_scope`] is where it is reported.
     fn alias(&mut self, raw_id: usize, span: Span, bounds: (usize, usize)) {
         let name = scan::alias_name(self.file, bounds.0, bounds.1).unwrap_or("").to_owned();
-        let anchor = self.ast.anchors.by_raw((self.segment, raw_id));
+        let anchor = self
+            .ast
+            .anchors
+            .in_document(&name)
+            .or_else(|| self.ast.anchors.by_raw((self.segment, raw_id)));
         let Some(anchor) = anchor else {
             self.diags.push(Diagnostic::new(
                 Code::AnchorNameUnrecoverable,
@@ -219,9 +313,15 @@ impl<'a> Builder<'a> {
         self.emit_node(kind, span, None, None);
     }
 
+    /// D2.6, unchanged: an alias to an anchor of an earlier document is `E0130`.
+    ///
+    /// An imported definition is exempt, and not as a special case. The import
+    /// installed it into *this* document before its first event, so by the time
+    /// the alias is written it is a definition of this document — which is
+    /// exactly D4.4's argument, and the reason the rule needs no relaxing.
     fn check_document_scope(&mut self, anchor: AnchorId, name: &str, span: Span) -> bool {
         let Some(def) = self.ast.anchors.get(anchor) else { return false };
-        if def.document == self.document {
+        if def.is_imported() || def.document == self.document {
             return false;
         }
         let note = def.span;
@@ -350,11 +450,11 @@ impl<'a> Builder<'a> {
                 Code::AnchorShadowed,
                 span,
                 format!(
-                    "anchor `&{name}` shadows an earlier definition; \
-                     aliases after this point bind to this node"
+                    "anchor `&{name}` enters a new state; aliases after this point bind to \
+                     this definition, and the bare global name denotes the last state"
                 ),
             )
-            .with_note("earlier definition here", earlier),
+            .with_note("the state it supersedes is here", earlier),
         );
     }
 }

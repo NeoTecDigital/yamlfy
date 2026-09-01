@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: reinstall::app
+imports: [lib/l.yfy]
+--- !node &Name
+from: app
+self: *Name
+--- !node
+v: *Name

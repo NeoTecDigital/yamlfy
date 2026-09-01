@@ -169,25 +169,54 @@ impl SourceFile {
         }
     }
 
-    /// Convert a raw marker into a [`Pos`]. `char_base` and `line_base` rebase
-    /// markers produced by a parser restarted part-way through the file.
+    /// Convert a raw marker into a [`Pos`], applying `rebase`.
     ///
     /// Crate-private on purpose: it is the only place a `saphyr-parser` type
     /// appears in a signature, and leaking it would force every downstream
     /// crate to depend on that parser at a matching version.
-    pub(crate) fn pos(
-        &self,
-        marker: &saphyr_parser::Marker,
-        char_base: usize,
-        line_base: u32,
-    ) -> Pos {
-        let index = marker.index() + char_base;
+    pub(crate) fn pos(&self, marker: &saphyr_parser::Marker, rebase: Rebase) -> Pos {
+        let index = rebase.char(marker.index());
         Pos {
             byte: self.byte_base + self.char_to_local_byte(index),
-            line: u32::try_from(marker.line()).unwrap_or(u32::MAX) + line_base,
+            line: rebase.line(marker.line()),
             col: u32::try_from(marker.col()).unwrap_or(u32::MAX).saturating_add(1),
         }
     }
+}
+
+/// The correction that turns a marker one parser instance produced into a
+/// position in the original file.
+///
+/// Two things move a marker, and they move it in opposite directions. A parser
+/// restarted at a document boundary after a syntax error sees only the tail of
+/// the file, so its indices are **too small** (D3.6). A parser fed a synthetic
+/// import prelude ahead of the file's own text sees more than the file, so its
+/// indices are **too large** (D6.7). The correction is therefore signed, and
+/// applying it is the one place either offset is allowed to be reasoned about.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub(crate) struct Rebase {
+    /// Characters to add to a marker's index.
+    pub chars: i64,
+    /// Lines to add to a marker's line.
+    pub lines: i64,
+}
+
+impl Rebase {
+    /// A marker's index as a character index into the original file.
+    pub(crate) fn char(self, index: usize) -> usize {
+        shift(index, self.chars)
+    }
+
+    /// A marker's line as a one-based line of the original file.
+    fn line(self, line: usize) -> u32 {
+        u32::try_from(shift(line, self.lines).max(1)).unwrap_or(u32::MAX)
+    }
+}
+
+/// `value + by`, saturating at zero rather than wrapping.
+fn shift(value: usize, by: i64) -> usize {
+    let shifted = i64::try_from(value).unwrap_or(i64::MAX).saturating_add(by);
+    usize::try_from(shifted.max(0)).unwrap_or(0)
 }
 
 /// Registry of every file a compilation touched.

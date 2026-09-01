@@ -20,6 +20,19 @@
 //!   and a one-based column, so every diagnostic can print `file:line:col`.
 //! * Diagnostics accumulate. Nothing returns on the first problem.
 //!
+//! # One file, and one exception
+//!
+//! An [`ast::Ast`] is one file's arena and stays one. The single thing that
+//! crosses a file boundary is a **binding**: [`parse::parse_with_imports`]
+//! takes the definitions a header imported and installs them into every
+//! document of the file being parsed (D6.7), so an ordinary alias reaches them.
+//! Such an [`anchor::AnchorDef`] carries the span it was written at, in the
+//! file that wrote it, and names a node of *that* file's arena — which is why
+//! [`ast::Ast::alias_target`] answers `None` for one and
+//! [`ast::Ast::alias_binding`] answers with a [`span::FileId`] as well as a
+//! node. The crate still reads no directory, resolves no path and knows nothing
+//! of projects; it is told what to bind.
+//!
 //! # Example
 //!
 //! ```
@@ -48,9 +61,11 @@ mod builder;
 mod scan;
 mod walk;
 
-pub use anchor::{AnchorDef, AnchorId, AnchorTable};
+pub use anchor::{AnchorDef, AnchorId, AnchorTable, Source};
 pub use ast::{AliasRef, Ast, Document, Entry, Node, NodeId, NodeKind, Scalar, ScalarStyle, Tag};
 pub use diagnostic::{Code, Diagnostic, Diagnostics, Severity, SeverityMap};
 pub use mapping::{is_merge_key, MERGE_KEY};
-pub use parse::{parse, parse_file, ParseOptions, Parsed};
+pub use parse::{
+    anchor_names, parse, parse_file, parse_with_imports, Import, ParseOptions, Parsed,
+};
 pub use span::{FileId, LoadError, Pos, SourceFile, SourceMap, Span};

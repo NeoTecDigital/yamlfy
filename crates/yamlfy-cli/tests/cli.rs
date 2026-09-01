@@ -10,6 +10,10 @@ fn fixture(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(relative)
 }
 
+fn project(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../projects").join(relative)
+}
+
 fn yamlfy(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_yamlfy"))
         .args(args)
@@ -74,7 +78,7 @@ fn allow_and_deny_flags_change_the_outcome() {
 #[test]
 fn several_files_are_checked_in_one_run() {
     let a = fixture("malformed/duplicate-key.yml");
-    let b = fixture("valid/tags.yml");
+    let b = fixture("valid/tags.yfy");
     let output = yamlfy(&["check", a.to_str().unwrap(), b.to_str().unwrap()]);
     let text = stdout(&output);
 
@@ -99,4 +103,101 @@ fn an_unknown_diagnostic_code_on_a_flag_is_rejected() {
 
     assert_eq!(output.status.code(), Some(2), "{text}");
     assert!(text.contains("unknown diagnostic code"), "{text}");
+}
+
+#[test]
+fn check_resolves_a_header_import_because_it_runs_discovery() {
+    // Parsing this file alone reports `E0100 unknown anchor` on `*Service`,
+    // which is defined in `core/net.yfy` and reaches it through the header. The
+    // library has always compiled it; `check` did not, and that gap is the one
+    // thing worse than no subcommand — a file that passes as a project and
+    // fails as a file. D6.1: they are one operation at two scopes.
+    let path = project("import-alias/app.yfy");
+    let output = yamlfy(&["check", path.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(output.status.success(), "{text}");
+    assert!(text.contains("0 error(s), 0 warning(s)"), "{text}");
+}
+
+#[test]
+fn only_the_paths_asked_about_are_reported() {
+    // The project root of a lone file is its parent directory, so discovery
+    // reads every sibling. `defs.yfy` shadows an import and warns; asking about
+    // `app.yfy` must not print that.
+    let path = project("import-shadowing/app.yfy");
+    let output = yamlfy(&["check", path.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(output.status.success(), "{text}");
+    assert!(text.contains("0 error(s), 0 warning(s)"), "{text}");
+
+    let whole = yamlfy(&["check", project("import-shadowing").to_str().unwrap()]);
+    let all = stdout(&whole);
+    assert!(all.contains("warning[W0300]"), "a directory reports its whole subtree: {all}");
+}
+
+#[test]
+fn an_explicit_root_overrides_the_derived_one() {
+    // `core/net.yfy` sits below the project root. Rooted at its own directory
+    // it is a project of one file; rooted at the project it is a member of one,
+    // and `--root` is what says which.
+    let path = project("import-alias/core/net.yfy");
+    let root = project("import-alias");
+    let output = yamlfy(&["check", "--root", root.to_str().unwrap(), path.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(output.status.success(), "{text}");
+    assert!(text.contains("0 error(s), 0 warning(s)"), "{text}");
+    assert!(!text.contains("app.yfy"), "the sibling was discovered, not reported: {text}");
+}
+
+#[test]
+fn a_root_that_is_not_a_directory_is_a_flag_error() {
+    let path = fixture("valid/scalars.yml");
+    let output = yamlfy(&["check", "--root", path.to_str().unwrap(), path.to_str().unwrap()]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("is not a directory"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn an_import_naming_nothing_is_reported_as_an_unresolved_import() {
+    let path = project("import-missing/app.yfy");
+    let output = yamlfy(&["check", path.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(!output.status.success());
+    assert_eq!(text.matches("error[E0240]").count(), 2, "{text}");
+    assert!(!text.contains("E0231"), "an unresolved import is not a bad header value: {text}");
+}
+
+#[test]
+fn an_import_that_cannot_see_its_target_is_reported_at_the_import() {
+    let path = project("import-private/open/user.yfy");
+    let root = project("import-private");
+    let output =
+        yamlfy(&["check", "--root", root.to_str().unwrap(), path.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(!output.status.success());
+    assert_eq!(text.matches("error[E0241]").count(), 1, "{text}");
+    assert!(text.contains("open/user.yfy:7:11"), "at the import entry: {text}");
+    assert!(text.contains("secret/hidden.yfy:6:13"), "noting the scope that blocked it: {text}");
+    assert!(!text.contains("E0240"), "the file exists; only its reach is the problem: {text}");
+}
+
+#[test]
+fn the_reserved_tag_is_reported_rather_than_silently_ignored() {
+    let path = project("reserved-tag/modes.yfy");
+    let output = yamlfy(&["check", path.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(!output.status.success());
+    assert!(text.contains("error[E0222]"), "{text}");
+    assert!(text.contains("modes.yfy:7:14"), "{text}");
 }

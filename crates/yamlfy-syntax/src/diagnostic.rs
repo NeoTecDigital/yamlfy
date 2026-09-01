@@ -73,8 +73,18 @@ pub enum Code {
     AnchorOrderInconsistent,
     /// An alias refers to an anchor defined in an earlier document.
     CrossDocumentAlias,
-    /// An anchor name is redefined, shadowing an earlier definition.
+    /// An anchor name is redefined: the name enters a new state.
     AnchorShadowed,
+    /// A reserved tag was written that the language does not implement.
+    ReservedTag,
+    /// Two files claim the same namespace.
+    DuplicateNamespace,
+    /// A `!yamlfy/header` field carries a value the language does not define.
+    BadHeaderValue,
+    /// A header's `imports:` entry names no file of the project.
+    UnresolvedImport,
+    /// A header's `imports:` entry names a file the importer cannot see.
+    ImportNotVisible,
 }
 
 impl Code {
@@ -92,6 +102,11 @@ impl Code {
             Code::CrossDocumentAlias => "E0130",
             Code::DuplicateMergeKey => "E0210",
             Code::AnchorShadowed => "W0300",
+            Code::ReservedTag => "E0222",
+            Code::DuplicateNamespace => "E0230",
+            Code::BadHeaderValue => "E0231",
+            Code::UnresolvedImport => "E0240",
+            Code::ImportNotVisible => "E0241",
         }
     }
 
@@ -118,6 +133,11 @@ impl Code {
             Code::AnchorOrderInconsistent,
             Code::CrossDocumentAlias,
             Code::AnchorShadowed,
+            Code::ReservedTag,
+            Code::DuplicateNamespace,
+            Code::BadHeaderValue,
+            Code::UnresolvedImport,
+            Code::ImportNotVisible,
         ]
     }
 
@@ -252,11 +272,39 @@ impl Diagnostics {
         self.items.extend(other.items);
     }
 
-    /// Render every diagnostic as `severity[CODE] path:line:col: message`.
+    /// Every diagnostic, ordered by **where it points**: file, then line, then
+    /// column. Ties keep the order they were found in, the sort being stable.
+    ///
+    /// This is D6.3's `(file rank, document index, node index)` expressed in the
+    /// terms a diagnostic actually carries. A `FileId` is an index into the one
+    /// source map and files are registered in discovery order, so ordering by it
+    /// is ordering by file rank; and within a file, position ascends with
+    /// document and node index, so line and column decide the rest.
+    ///
+    /// Insertion order cannot be the printed order. Findings arrive by *pass*,
+    /// not by position — every file's parse diagnostics, then everything the
+    /// project-wide passes found — so a cause routinely prints after its
+    /// consequence (`E0241` at line 7 after the `E0100` at line 9 it explains)
+    /// and files interleave. A reader fixes faults top-down through a file.
+    ///
+    /// A diagnostic with no span sorts last: it belongs to no position, and
+    /// putting it first would push the file it is about below it.
+    #[must_use]
+    pub fn in_position_order(&self) -> Vec<&Diagnostic> {
+        let mut ordered: Vec<&Diagnostic> = self.items.iter().collect();
+        ordered.sort_by_key(|item| match item.span {
+            Some(span) => (span.file.0, span.start.line, span.start.col),
+            None => (u32::MAX, u32::MAX, u32::MAX),
+        });
+        ordered
+    }
+
+    /// Render every diagnostic as `severity[CODE] path:line:col: message`, in
+    /// [`Diagnostics::in_position_order`].
     #[must_use]
     pub fn render(&self, sources: &SourceMap) -> String {
         let mut out = String::new();
-        for item in &self.items {
+        for item in self.in_position_order() {
             render_one(&mut out, sources, item);
         }
         out
@@ -334,6 +382,34 @@ mod tests {
         }
         let messages: Vec<&str> = diagnostics.items().iter().map(|d| d.message.as_str()).collect();
         assert_eq!(messages, ["dup 0", "dup 1", "dup 2"]);
+    }
+
+    #[test]
+    fn rendering_orders_by_position_rather_than_by_the_pass_that_found_it() {
+        let mut sources = SourceMap::new();
+        let first = sources.add("a.yml", "a: 1\n");
+        let second = sources.add("b.yml", "c: 3\n");
+        let at = |file, line| Span::empty(file, Pos { byte: 0, line, col: 1 });
+        let mut diagnostics = Diagnostics::new();
+        // The order a pipeline finds them in: another file first, then one
+        // file's own parse, then the project-wide pass that explains it.
+        diagnostics.push(Diagnostic::new(Code::SyntaxError, at(second, 1), "another file"));
+        diagnostics.push(Diagnostic::new(Code::SyntaxError, at(first, 9), "the consequence"));
+        diagnostics.push(Diagnostic::new(Code::UnresolvedImport, at(first, 2), "the cause"));
+
+        let printed: Vec<String> =
+            diagnostics.render(&sources).lines().map(ToOwned::to_owned).collect();
+        assert!(printed[0].contains("a.yml:2:1"), "{printed:?}");
+        assert!(
+            printed[1].contains("a.yml:9:1"),
+            "a cause prints above what it caused: {printed:?}"
+        );
+        assert!(printed[2].contains("b.yml:1:1"), "and one file does not interleave with another");
+        assert_eq!(
+            diagnostics.items()[0].message,
+            "another file",
+            "the collection itself still holds them in the order they were found"
+        );
     }
 
     #[test]

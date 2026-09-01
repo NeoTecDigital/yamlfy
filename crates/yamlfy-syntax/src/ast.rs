@@ -9,7 +9,7 @@
 //! node graph be cyclic while every Rust value in it stays a plain owned struct
 //! with no `Rc`, no `RefCell` and no recursive `Drop`.
 
-use crate::anchor::{AnchorId, AnchorTable};
+use crate::anchor::{AnchorId, AnchorTable, Source};
 use crate::span::{FileId, Span};
 
 /// Handle to a node in an [`Ast`].
@@ -256,13 +256,40 @@ impl Ast {
         self.node(id).tag.map(|i| &self.tags[i as usize])
     }
 
-    /// Follow an alias to the node its anchor names. Returns `None` for a
-    /// non-alias node or an unbound anchor. This is a lookup, not a copy, so
-    /// following it repeatedly can revisit nodes: callers must keep a visited
-    /// set.
+    /// Follow an alias to the node its anchor names **in this file**. Returns
+    /// `None` for a non-alias node, an unbound anchor, or an anchor a header
+    /// import brought in — that node is in another arena and indexing this one
+    /// with it would silently name the wrong node. Use [`Ast::alias_binding`]
+    /// when the answer may cross a file.
+    ///
+    /// This is a lookup, not a copy, so following it repeatedly can revisit
+    /// nodes: callers must keep a visited set.
     #[must_use]
     pub fn alias_target(&self, id: NodeId) -> Option<NodeId> {
-        let alias = self.alias(id)?;
-        self.anchors.get(alias.anchor).map(|def| def.node)
+        let def = self.anchors.get(self.alias(id)?.anchor)?;
+        matches!(def.source, Source::Local).then_some(def.node)
+    }
+
+    /// Follow an alias to the file and node its anchor names.
+    ///
+    /// Equal to [`Ast::alias_target`] paired with [`Ast::file`] for an ordinary
+    /// alias. For one that reaches a definition a header imported (D6.7) the
+    /// file is the one that *wrote* the definition, and the node indexes that
+    /// file's arena.
+    #[must_use]
+    pub fn alias_binding(&self, id: NodeId) -> Option<(FileId, NodeId)> {
+        self.anchors.get(self.alias(id)?.anchor)?.target()
+    }
+
+    /// Point an imported definition at the node it names in the file that wrote
+    /// it. Returns whether `id` was an imported definition.
+    ///
+    /// This is the one mutation this crate offers on a finished [`Ast`], and it
+    /// exists because an import is the one binding a single file's parse cannot
+    /// complete on its own: the prelude makes the alias *bind*, and the node it
+    /// binds to is only knowable once the exporting file's parse is final.
+    /// Nothing else about the arena is reachable through it.
+    pub fn rebind_import(&mut self, id: AnchorId, node: NodeId) -> bool {
+        self.anchors.rebind(id, node)
     }
 }

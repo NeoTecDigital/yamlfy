@@ -1,0 +1,6 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Base YAML: the tag vocabulary is not interpreted here (D6.6), so `!oneof` is
+# an ordinary unrecognised tag and the reservation is silent.
+listener:
+  mode: !oneof [tcp, udp]

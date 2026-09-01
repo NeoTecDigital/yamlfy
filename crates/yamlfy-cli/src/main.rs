@@ -3,9 +3,9 @@
 
 //! `yamlfy` — the Yamlfication command line.
 //!
-//! Phase 1 step 2 ships one subcommand, `check`, which parses files and prints
-//! `file:line:col` diagnostics. Later passes add their own subcommands; nothing
-//! here is stubbed for them.
+//! Phase 1 ships one subcommand, `check`, which discovers the project a path
+//! belongs to and prints `file:line:col` diagnostics. Later passes add their own
+//! subcommands; nothing here is stubbed for them.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -47,11 +47,16 @@ struct Cli {
 /// Available subcommands.
 #[derive(Subcommand)]
 enum Command {
-    /// Parse files and report diagnostics.
+    /// Check files or directories and report diagnostics.
     Check {
-        /// Files to parse.
-        #[arg(required = true, value_name = "FILE")]
+        /// Files or directories to check.
+        #[arg(required = true, value_name = "PATH")]
         files: Vec<PathBuf>,
+
+        /// Project root imports resolve against. Defaults to a directory
+        /// argument itself, or to a file argument's parent directory.
+        #[arg(long, value_name = "DIR")]
+        root: Option<PathBuf>,
 
         /// Also print the arena node table for each file.
         #[arg(long)]
@@ -75,7 +80,13 @@ fn main() -> ExitCode {
     debug!(file_logging = guard.is_file_backed(), "logging ready");
 
     match &cli.command {
-        Command::Check { files, dump } => check::run(&config, files, *dump),
+        Command::Check { files, root, dump } => {
+            if let Some(root) = root.as_deref().filter(|root| !root.is_dir()) {
+                eprintln!("yamlfy: --root {} is not a directory", root.display());
+                return ExitCode::from(2);
+            }
+            check::run(&config, files, *dump, root.as_deref())
+        }
     }
 }
 

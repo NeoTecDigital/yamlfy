@@ -145,3 +145,16 @@ fn a_missing_configuration_file_is_not_an_error() {
     assert_eq!(config.log.filter, "warn");
     let _ = std::io::stdout().flush();
 }
+
+#[test]
+fn every_diagnostic_code_is_configurable() {
+    let env = StaticEnvironment::default();
+    let mut config = Config::load(None, &env).expect("defaults load");
+    for code in Code::all() {
+        config
+            .set_severity(code.as_str(), "warning")
+            .unwrap_or_else(|e| panic!("{code} must be configurable: {e}"));
+        assert_eq!(yamlfy_config::effective_severity(&config, *code), Severity::Warning);
+        assert!(yamlfy_config::known_codes().contains(code.as_str()), "{code} must be listed");
+    }
+}

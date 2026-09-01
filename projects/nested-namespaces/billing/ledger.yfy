@@ -1,0 +1,8 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: acme::billing
+--- !node &ledger
+port: 8081
+region: east

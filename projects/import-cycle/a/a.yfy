@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: ring::a
+visibility: public
+imports: [b/b.yfy]
+--- !type &A
+peer: *B
+also: *Late

@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Base YAML. Nothing here is interpreted: the header document is an ordinary
+# tagged mapping, `extends` is a field, and `<<` is plain YAML merge.
+--- !yamlfy/header
+namespace: not::a::namespace
+visibility: nonsense
+--- !node &edge-node
+extends: pretend
+port: 444

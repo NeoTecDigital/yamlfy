@@ -8,6 +8,7 @@
 //! `file:line:col` diagnostics.
 
 pub use yamlfy_config as config;
+pub use yamlfy_core as core;
 pub use yamlfy_syntax as syntax;
 
 use yamlfy_syntax::{parse_file, ParseOptions, Parsed, SourceMap};

@@ -23,6 +23,7 @@ path = "src/main.rs"
 [dependencies]
 yamlfy-syntax.workspace = true
 yamlfy-config.workspace = true
+yamlfy-core.workspace = true
 clap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

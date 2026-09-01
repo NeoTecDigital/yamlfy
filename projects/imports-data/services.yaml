@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Base YAML. `extends` is an ordinary field and `<<` is plain YAML merge.
+defaults: &defaults
+  region: east
+  retries: 2
+web:
+  <<: *defaults
+  extends: not-inheritance
+  port: 80

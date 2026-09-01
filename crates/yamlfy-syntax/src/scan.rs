@@ -82,17 +82,16 @@ fn skip_comment(file: &SourceFile, from: usize, hi: usize) -> usize {
     i
 }
 
-/// Find the anchor property that belongs to a node whose content starts at
-/// `hi`, searching the region `[lo, hi)`.
+/// Visit every `&name` token in `[lo, hi)`, in source order.
 ///
-/// Returns the character range of the `&name` token, `&` included.
-pub(crate) fn find_anchor_token(
-    file: &SourceFile,
-    lo: usize,
-    hi: usize,
-) -> Option<TokenRange> {
+/// Quoted scalars and comments are skipped, so an ampersand inside either is
+/// not a token. Nothing else is interpreted: this is a lexer, not a parser, and
+/// it has no way to know whether a `&name` it finds is a node property or text
+/// inside a plain scalar. Both callers can afford that — one searches a region
+/// the grammar has already restricted to properties, the other over-approximates
+/// on purpose ([`all_anchor_tokens`]).
+fn each_anchor_token(file: &SourceFile, lo: usize, hi: usize, mut visit: impl FnMut(TokenRange)) {
     let hi = hi.min(file.char_len());
-    let mut found = None;
     let mut i = lo;
     let mut prev = if lo == 0 { None } else { file.char_at(lo - 1) };
     while i < hi {
@@ -103,7 +102,7 @@ pub(crate) fn find_anchor_token(
             '&' if can_start_token(prev) => {
                 let end = name_end(file, i + 1, hi);
                 if end > i + 1 {
-                    found = Some(TokenRange { start: i, end });
+                    visit(TokenRange { start: i, end });
                 }
                 end.max(i + 1)
             }
@@ -112,6 +111,38 @@ pub(crate) fn find_anchor_token(
         prev = file.char_at(next.saturating_sub(1));
         i = next;
     }
+}
+
+/// Find the anchor property that belongs to a node whose content starts at
+/// `hi`, searching the region `[lo, hi)`.
+///
+/// Returns the character range of the `&name` token, `&` included.
+pub(crate) fn find_anchor_token(
+    file: &SourceFile,
+    lo: usize,
+    hi: usize,
+) -> Option<TokenRange> {
+    let mut found = None;
+    each_anchor_token(file, lo, hi, |token| found = Some(token));
+    found
+}
+
+/// Every `&name` token in the whole file, in source order.
+///
+/// This is the one thing about a file that can be learned **without parsing
+/// it**, and it exists because a parse is not always available: an unknown
+/// alias is a scan error, and a scan error costs every anchor written after it
+/// in that document. A file in an import cycle is exactly that case — its
+/// cross-file aliases cannot bind until the other side is bound — so the names
+/// it might export are read from its text to start the binding fixed point off
+/// (see `yamlfy-core`'s `bind`).
+///
+/// The answer is an **over-approximation**: an `&x` inside a plain scalar is
+/// indistinguishable from a node property to a lexer. That is safe for the one
+/// use it has, because a name that no parse confirms is never exported.
+pub(crate) fn all_anchor_tokens(file: &SourceFile) -> Vec<TokenRange> {
+    let mut found = Vec::new();
+    each_anchor_token(file, 0, file.char_len(), |token| found.push(token));
     found
 }
 
@@ -165,6 +196,18 @@ mod tests {
     #[test]
     fn requires_a_name_after_the_ampersand() {
         assert_eq!(anchor("a: & 1\n", 1, 5), None);
+    }
+
+    #[test]
+    fn every_anchor_token_in_a_file_is_found_in_source_order() {
+        let mut map = SourceMap::new();
+        let id = map.add("t.yml", "--- &a\nk: &b 1\nq: \"&c\"\n# &d\ne: &f 2\n");
+        let file = map.file(id);
+        let found: Vec<String> = all_anchor_tokens(file)
+            .into_iter()
+            .map(|t| file.slice_chars(t.start, t.end).to_owned())
+            .collect();
+        assert_eq!(found, ["&a", "&b", "&f"], "quoted text and comments carry no properties");
     }
 
     #[test]

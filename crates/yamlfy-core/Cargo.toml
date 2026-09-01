@@ -1,0 +1,22 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[package]
+name = "yamlfy-core"
+description = "Yamlfication's semantic layer: project discovery, scopes and symbols."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+yamlfy-syntax.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

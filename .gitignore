@@ -19,3 +19,4 @@ fixtures/**/leak-*
 fixtures/**/oom-*
 fixtures/**/timeout-*
 !fixtures/**/*.yml
+!fixtures/**/*.yfy

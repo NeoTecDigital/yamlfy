@@ -16,7 +16,7 @@ categories.workspace = true
 readme = "README.md"
 
 [workspace]
-members = ["crates/yamlfy-syntax", "crates/yamlfy-config", "crates/yamlfy-cli"]
+members = ["crates/yamlfy-syntax", "crates/yamlfy-config", "crates/yamlfy-core", "crates/yamlfy-cli"]
 exclude = ["fuzz"]
 
 [workspace.package]
@@ -33,6 +33,7 @@ categories = ["parser-implementations", "database-implementations"]
 [workspace.dependencies]
 yamlfy-syntax = { path = "crates/yamlfy-syntax", version = "0.1.0" }
 yamlfy-config = { path = "crates/yamlfy-config", version = "0.1.0" }
+yamlfy-core = { path = "crates/yamlfy-core", version = "0.1.0" }
 saphyr-parser = "0.0.12"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "json"] }
@@ -45,6 +46,7 @@ thiserror = "2.0"
 [dependencies]
 yamlfy-syntax.workspace = true
 yamlfy-config.workspace = true
+yamlfy-core.workspace = true
 
 [lints]
 workspace = true

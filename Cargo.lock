@@ -621,6 +621,7 @@ name = "yamlfication"
 version = "0.1.0"
 dependencies = [
  "yamlfy-config",
+ "yamlfy-core",
  "yamlfy-syntax",
 ]
 
@@ -633,6 +634,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "yamlfy-config",
+ "yamlfy-core",
  "yamlfy-syntax",
 ]
 
@@ -643,6 +645,14 @@ dependencies = [
  "serde",
  "thiserror",
  "toml",
+ "tracing",
+ "yamlfy-syntax",
+]
+
+[[package]]
+name = "yamlfy-core"
+version = "0.1.0"
+dependencies = [
  "tracing",
  "yamlfy-syntax",
 ]

@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: m::pub-mu::pub-mu
+visibility: public
+mutability: mutable
+--- !node &c-pub-mu-pub-mu
+port: 2
+region: east

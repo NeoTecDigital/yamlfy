@@ -1,0 +1,8 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+%TAG ! tag:example.com,2026:
+--- !yamlfy/header
+version: 1
+namespace: tagged::remapped
+--- !node &Remote
+port: 1

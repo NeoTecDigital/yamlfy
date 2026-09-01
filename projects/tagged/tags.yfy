@@ -1,0 +1,14 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: tagged
+--- !type &Service
+port: !!int
+region:
+--- !node &Api
+extends: !ref tagged::Service
+port: 8443
+owner: !edge {to: *Api, kind: owns}
+verbatim: !<node> {port: 1}
+plain: 7
