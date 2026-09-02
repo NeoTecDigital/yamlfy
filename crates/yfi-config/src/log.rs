@@ -32,7 +32,10 @@ impl LogFormat {
 /// Where and how much to log.
 #[derive(Clone, Debug)]
 pub struct LogConfig {
-    /// A `tracing-subscriber` filter directive, for example `yamlfy=debug`.
+    /// A `tracing-subscriber` filter directive, for example `yfi_core=debug`.
+    ///
+    /// A target is a crate name: `yfi_syntax`, `yfi_core`, `yfi_config`,
+    /// `yfi_cli`, `yamlfication`. `yamlfy` is the binary and is not one.
     pub filter: String,
     /// Directory for the rolling log file. `None` logs to stderr only.
     pub directory: Option<PathBuf>,
