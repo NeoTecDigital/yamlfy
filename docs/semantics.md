@@ -1638,9 +1638,10 @@ private.
 **What the mutability axis does with this, today.** Nothing writes to a member at
 compile time — the only compile-time write is an extended reference, and that is gated
 on the *scope* (`E0217`, above). A member's `mut` is therefore carried, composed and
-exposed, and applied by `emit` and the runtime. That is a smaller claim than the
-visibility axis makes and it is made deliberately: the axis is *recorded* here in the
-sense D6.5 says a runtime writer is still owed.
+exposed, and applied by `emit`. That is a smaller claim than the visibility axis makes
+and it is made deliberately: this document specifies a language and its compiler, and
+a member's `mut` is carried for whatever reads the image. Enforcing it against a live
+write belongs to a runtime, which is a separate artifact and out of scope here (D6.5).
 
 **One earlier clause of this decision is now wrong and is withdrawn**: "a member is not
 a scope, it has no axes of its own to consult". It has two. What survives unchanged is
@@ -1764,7 +1765,7 @@ namespace its file contributes to — as in `fixtures/valid/header-document.yfy`
 declares `namespace: acme::billing`.
 
 **Checking one file is a project of one file.** `yamlfy check <file>` and
-`yamlfy build <dir>` are the same operation at two scopes, not two operations. This is
+`yamlfy check <dir>` are the same operation at two scopes, not two operations. This is
 stated as a definition rather than derived, because it is what makes "cross-file"
 unremarkable: there is no special cross-file mode and no linking step distinct from
 resolution. A path resolves through the scope tree of the project it is in; a project of
@@ -1954,9 +1955,13 @@ exactly as `visible` is, and `E0217` is the failure (D4.12). The predicate is th
 walk as `visible`'s, with the same outermost-blocker reporting, so the two axes cannot
 give contradictory accounts of who shut a reach out.
 
-What is still owed is a *runtime* writer. The axis being enforced at compile time is not
-the same as it being enforced at query time, and D6.5's composition rule is what both
-will use.
+**Where this stops, and why that is a boundary and not a debt.** The axis is enforced
+at compile time, against the one write the language performs: an extended reference.
+Enforcing it at *query* time is a different thing, and it belongs to a runtime — which
+is a separate artifact and is deliberately not specified here. What this document owes
+such a runtime is the composition rule, and D6.5 is it: the same walk, the same
+outermost blocker, so a runtime that follows it cannot disagree with the compiler
+about who may write what.
 
 ### D6.6 — Two file classes, and why there are two
 

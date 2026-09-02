@@ -3,7 +3,7 @@
 
 //! The `yamlfy check` subcommand.
 //!
-//! **`check <file>` and `build <dir>` are one operation at two scopes** (D6.1),
+//! **`check <file>` and `check <dir>` are one operation at two scopes** (D6.1),
 //! so this runs `discover` and never the parser alone. Parsing a file by itself
 //! cannot see a header's `imports:`, so every cross-file alias in it reports as
 //! an unknown anchor — the file compiles through the library and fails through

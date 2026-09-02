@@ -93,10 +93,15 @@ cargo test --workspace
 cargo run -- check path/to/project
 ```
 
-`yamlfy check` takes a file or a directory. A directory is one project: its tree is the
-namespace and scope hierarchy. Configuration is `yamlfy.toml` and `YAMLFY_*`; every
-diagnostic code can be set to `allow`, `warning` or `error`, so a project that wants a
-closed world writes `--deny W0301` and gets it.
+`yamlfy check` takes a file or a directory and runs every pass that can raise a
+diagnostic — `discover`, `parse`, `intern`, `link`, `check` — so what the compiler
+finds is what you are told, not only what the file readers found. A directory is one
+project: its tree is the namespace and scope hierarchy, and checking one file is a
+project of one file.
+
+Configuration is `yamlfy.toml` and `YAMLFY_*`; every diagnostic code can be set to
+`allow`, `warning` or `error`, so a project that wants a closed world writes
+`--deny W0301` and gets it.
 
 ## The specification
 
