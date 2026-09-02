@@ -1,0 +1,14 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: emit::leaf
+visibility: public
+---
+// Two steps from `secret`'s author, and across a scope boundary, so it does
+// not arrive. The inclusion is compositional: Leaf has a Mixin and is not one,
+// so no `is_a` edge is created by it (D4.1).
+Leaf: !node &Leaf
+  extends: ../mid/Mid
+  <<: ../base/Mixin
+  pub name: leaf

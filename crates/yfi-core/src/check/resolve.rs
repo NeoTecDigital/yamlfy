@@ -144,10 +144,12 @@ pub(crate) fn every_holder(ctx: &Ctx) -> Vec<Place> {
 
 /// Whether a sequence is a member list: whether any item names a member.
 ///
-/// An item names one only if it is a plain untagged scalar of a source file
-/// (pass 3), so a list of quoted strings, tagged values or collections is data
-/// and gets no view — which is what keeps this from deciding a semantic question
-/// on an incidental signal.
+/// **Membership is the file class**, not a spelling (D4.12). Every scalar
+/// nested in a Yamlfication source file names a member of the collection
+/// holding it, however it is quoted or tagged; a base YAML sequence is data and
+/// names nothing. So this asks pass 3 rather than re-reading the items, and the
+/// only sequences without a view are those in a `.yaml` and those holding
+/// nothing but collections, which have no names to hold.
 fn holds_members(ctx: &Ctx, file: yfi_syntax::FileId, node: yfi_syntax::NodeId) -> bool {
     let Some(ast) = ctx.ast(file) else { return false };
     ast.items(node)

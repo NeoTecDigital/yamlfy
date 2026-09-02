@@ -29,8 +29,12 @@
 //!   view per node, and validate every concrete node against its abstract
 //!   ancestors' declarations.
 //!
-//! Pass 2 is `yfi_syntax::parse`, driven by pass 1. Pass 6 — `emit` — is not
-//! written yet and is deliberately absent rather than stubbed.
+//! * [`emit`] — pass 6. Turn the resolved views into an [`image`]: a model per
+//!   node marked abstract or concrete, its ancestor chain, a CSR edge index in
+//!   both directions over inheritance *and* data edges, its scope path, and the
+//!   name index a path query resolves against.
+//!
+//! Pass 2 is `yfi_syntax::parse`, driven by pass 1.
 //!
 //! # Example
 //!
@@ -61,7 +65,9 @@ mod walk;
 
 pub mod check;
 pub mod discover;
+pub mod emit;
 pub mod header;
+pub mod image;
 pub mod intern;
 pub mod link;
 pub mod member;
@@ -74,7 +80,9 @@ pub use discover::{
     discover, discover_in, DiscoverOptions, FileClass, Project, ProjectFile,
     DEFAULT_DATA_EXTENSIONS, DEFAULT_SOURCE_EXTENSIONS,
 };
+pub use emit::emit;
 pub use header::Header;
+pub use image::{Edge, EdgeKind, FieldView, Image, ModelId, ModelKind, ModelView, Named};
 pub use intern::{intern, FileIndex, Interned, Member};
 pub use member::MemberFlags;
 pub use order::NodeOrder;

@@ -8,3 +8,7 @@ web:
   <<: *defaults
   extends: not-inheritance
   port: 80
+  # A plain sequence of bare names. In a `.yfy` every one of these is a member
+  # of the sequence; here they are data, and the file class is the whole of the
+  # difference (D6.6).
+  tags: [alpha, beta]

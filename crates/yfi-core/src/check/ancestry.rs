@@ -26,20 +26,31 @@
 
 use std::collections::HashSet;
 
-use crate::link::{Ctx, Direction, EdgeId, EdgeKind, Graph, Stratum};
+use crate::intern::Interned;
+use crate::link::{Direction, EdgeId, EdgeKind, Graph, Stratum};
 use crate::tags::TagKind;
 
 use super::view::Place;
 
 /// Whether a node is emitted as a model, and therefore validated.
-pub(crate) fn is_concrete(ctx: &Ctx, place: Place) -> bool {
-    ctx.interned.tag_kind(place.0, place.1) == Some(TagKind::Node)
+///
+/// `!node` in Yamlfication source, and nothing else. `!type` is abstract, an
+/// untagged node is abstract (D7.1), and a tag in a base YAML file classifies
+/// as [`TagKind::Other`] because the vocabulary is not interpreted there
+/// (D6.6) — so a `.yaml` emits no models of its own by the default arriving at
+/// the right answer, rather than by a rule of its own.
+///
+/// Published because pass 6 asks the same question and a second spelling of it
+/// would be a second rule.
+#[must_use]
+pub fn is_concrete(interned: &Interned, place: Place) -> bool {
+    interned.tag_kind(place.0, place.1) == Some(TagKind::Node)
 }
 
 /// Whether a node is inheritable-and-never-emitted, which is what makes its
 /// keys declarations rather than data.
-pub(crate) fn is_abstract(ctx: &Ctx, place: Place) -> bool {
-    !is_concrete(ctx, place)
+pub(crate) fn is_abstract(interned: &Interned, place: Place) -> bool {
+    !is_concrete(interned, place)
 }
 
 /// Every node on `place`'s `is_a` axis, nearest first, following no dropped

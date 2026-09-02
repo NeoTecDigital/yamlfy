@@ -184,6 +184,15 @@ impl Linked {
         self.table.path_of(file, node)
     }
 
+    /// The definition table, for the one other pass that walks a path.
+    ///
+    /// Crate-internal on purpose: pass 6 resolves a query path with the *same*
+    /// walk pass 4 resolves an operand with, and handing it the table is what
+    /// keeps "what is addressable" written once.
+    pub(crate) fn table(&self) -> &table::Table {
+        &self.table
+    }
+
     /// Every path reference written in a Yamlfication source file, resolved or
     /// not, each carrying the role its operator gave it and whether it declared
     /// mutation intent with `!ref`.

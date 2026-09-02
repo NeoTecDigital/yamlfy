@@ -117,18 +117,48 @@ fn a_public_member_of_a_private_scope_is_public_only_inside_it() {
 }
 
 #[test]
-fn a_list_of_quoted_strings_is_data_and_declares_no_members() {
-    // Whether a sequence is a member list is decided by how its items are
-    // written, not by where the sequence sits: only a plain untagged scalar
-    // declares a member (D6.6's argument, one level down).
+fn every_nested_scalar_of_a_yfy_is_a_member_however_it_is_written() {
+    // **A member is anything nested inside something else**, exactly as YAML
+    // nests, and the discriminator is the file class. A `.yfy` is not a data
+    // store: what is nested in it are members, and the data is what is
+    // evaluated from that structure. Quoting is the escape for the *prefix*
+    // (D4.2, one level down) and has never been a rule about membership —
+    // letting it be one would put a signal inside the file in charge of a
+    // semantic question, which is what D6.6 forbids one level up.
     let fixture = open("member-flags");
     let file = fixture.file("app/app.yfy");
     let tags = common::entry_at(&fixture.project, file, 1, &["Service", "tags"]);
     let ast = &fixture.project.file(file).expect("file").ast;
-    for item in ast.items(tags).expect("a sequence") {
-        assert_eq!(fixture.interned.key_of(file, *item), None, "a quoted item names nothing");
+    let names: Vec<&str> = ast
+        .items(tags)
+        .expect("a sequence")
+        .iter()
+        .filter_map(|item| fixture.interned.key_of(file, *item))
+        .map(|name| fixture.interned.symbols().resolve(name).unwrap_or_default())
+        .collect();
+    assert_eq!(names, ["one", "two"], "quoted items are members, and keep their text");
+    assert!(fixture.checked.resolved(file, tags).is_some(), "so the sequence holds members");
+}
+
+#[test]
+fn a_base_yaml_sequence_declares_no_members_at_all() {
+    // The other side of the same discriminator: a `.yaml` is base YAML data,
+    // has no yfi syntax in it (D6.6), and declares nothing. Nothing about how
+    // its items are written can change that, which is what makes the rule one
+    // question and not two.
+    let fixture = open("imports-data");
+    let file = fixture.file("services.yaml");
+    let ast = &fixture.project.file(file).expect("file").ast;
+    let sequences: Vec<yfi_syntax::NodeId> = (0..ast.nodes().len())
+        .map(|at| yfi_syntax::NodeId(u32::try_from(at).expect("arena")))
+        .filter(|node| ast.items(*node).is_some())
+        .collect();
+    assert!(!sequences.is_empty(), "the fixture writes at least one sequence");
+    for node in sequences {
+        for item in ast.items(node).expect("a sequence") {
+            assert_eq!(fixture.interned.key_of(file, *item), None, "data declares nothing");
+        }
     }
-    assert!(fixture.checked.resolved(file, tags).is_none(), "and the sequence holds no members");
 }
 
 #[test]

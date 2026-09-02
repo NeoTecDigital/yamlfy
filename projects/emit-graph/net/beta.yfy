@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: emit::net
+visibility: public
+---
+Beta: !node &Beta
+  peer: ./Alpha
+  label: beta

@@ -70,7 +70,7 @@ pub(crate) fn validate(
     order: &[Place],
     diagnostics: &mut Diagnostics,
 ) {
-    for place in order.iter().filter(|held| is_concrete(ctx, **held)) {
+    for place in order.iter().filter(|held| is_concrete(ctx.interned, **held)) {
         let Some(subject) = subject(ctx, views, linked.graph(), dropped, *place) else {
             continue;
         };
@@ -91,7 +91,7 @@ fn subject<'a>(
 ) -> Option<Subject<'a>> {
     let held: Vec<(Place, &View)> = ancestors(graph, dropped, place)
         .into_iter()
-        .filter(|base| is_abstract(ctx, *base))
+        .filter(|base| is_abstract(ctx.interned, *base))
         .filter_map(|base| views.declared(base).map(|view| (base, view)))
         .collect();
     if held.is_empty() {

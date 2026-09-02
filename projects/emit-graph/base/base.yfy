@@ -1,0 +1,18 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: emit::base
+visibility: public
+---
+// `!type` is abstract: inheritable, validated against, never emitted (D7.1).
+// `secret` declares nothing, so it is private and gated to this scope.
+Base: !type &Base
+  pub kind: base
+  pub name:
+  secret: hidden
+
+// An untagged anchored mapping is a mixin. It is abstract too, and emitting it
+// would make the ordinary act of factoring shared keys pollute the graph.
+Mixin: &Mixin
+  pub shared: yes

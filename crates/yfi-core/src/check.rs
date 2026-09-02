@@ -62,19 +62,23 @@ mod scc;
 mod validate;
 pub mod view;
 
+use std::collections::HashSet;
+
 use tracing::debug;
 use yfi_syntax::{Diagnostics, FileId, NodeId, SeverityMap};
 
 use crate::discover::Project;
 use crate::intern::Interned;
-use crate::link::{Ctx, Linked};
+use crate::link::{Ctx, EdgeId, Linked};
 
+pub use ancestry::is_concrete;
 pub use view::{Acquisition, Field, FieldGate, View};
 
 /// Everything pass 5 resolved, and everything it found.
 pub struct Checked {
     diagnostics: Diagnostics,
     views: resolve::Views,
+    dropped: HashSet<EdgeId>,
     cyclic: bool,
 }
 
@@ -117,6 +121,19 @@ impl Checked {
     #[must_use]
     pub fn own(&self, file: FileId, node: NodeId) -> Option<&View> {
         self.views.own((file, node))
+    }
+
+    /// Every node on `(file, node)`'s `is_a` axis, nearest first, each
+    /// ancestor once however many paths reach it.
+    ///
+    /// Extensions and extended references create ancestry; **inclusions do
+    /// not** (D4.1). The walk follows no edge the cycle recovery dropped, which
+    /// is why it is answered here rather than re-derived from the graph: the
+    /// dropped set is pass 5's and a second walk without it would report an
+    /// ancestry the checker never validated against.
+    #[must_use]
+    pub fn ancestors(&self, linked: &Linked, file: FileId, node: NodeId) -> Vec<(FileId, NodeId)> {
+        ancestry::ancestors(linked.graph(), &self.dropped, (file, node))
     }
 
     /// How many nodes were resolved.
@@ -164,7 +181,7 @@ pub fn check_with(
         resolved = views.len(),
         "checked project"
     );
-    Checked { diagnostics, views, cyclic: cycles::any_cyclic(&components) }
+    Checked { diagnostics, views, dropped, cyclic: cycles::any_cyclic(&components) }
 }
 
 /// Graph fixtures for the unit tests of [`scc`], built without a project so the

@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: emit::mid
+visibility: public
+---
+// One `extends` step. `secret` arrives as Mid's own private member, re-gated
+// onto `emit/mid` — privacy crosses exactly one step (D4.12).
+Mid: !type &Mid
+  extends: ../base/Base
+  pub tier: mid

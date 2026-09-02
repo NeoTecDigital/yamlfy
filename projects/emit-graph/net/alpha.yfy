@@ -1,0 +1,17 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: emit::net
+visibility: public
+---
+// A legal data cycle: only inheritance may not close one. `./Beta` is anchored
+// and is a reach; `alpha` is not anchored and stays a string.
+Alpha: !node &Alpha
+  peer: ./Beta
+  label: alpha
+
+// An alias is a data edge too. Its scope is the document (D2.6), where a path's
+// is the project — same edge, two reaches.
+Gamma: !node &Gamma
+  mate: *Alpha

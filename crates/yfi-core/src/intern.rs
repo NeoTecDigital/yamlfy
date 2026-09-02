@@ -54,12 +54,19 @@ pub struct FileIndex {
 }
 
 /// A node that names a member of the collection holding it: a mapping key, or
-/// an item of a sequence written as a member list.
+/// an item of a sequence.
+///
+/// **A member is anything nested inside something else, exactly as YAML
+/// nests, and the discriminator is the file class.** A `.yfy` is not a data
+/// store — everything nested in it is a member of its parent, and the data is
+/// what is *evaluated from* that structure. A `.yaml` is base YAML data and
+/// declares no members at all (D6.6).
 ///
 /// The name is **interned after the flags are taken off it**, so every later
 /// pass — key lookup, `E0218`'s member addressing, `W0301`, `E0220` — sees the
-/// member's name and never the prefix. Only a plain, untagged scalar in a
-/// Yamlfication source file is read this way (D4.2's escape, one level down).
+/// member's name and never the prefix. The prefix alone is read from a plain,
+/// untagged scalar, which is D4.2's escape one level down: quoting a name
+/// keeps the words in it, and does not stop it being a member.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Member {
     /// The interned name, prefix removed.
@@ -284,10 +291,11 @@ fn link_children(
         let mut found: Vec<(usize, Member)> = Vec::new();
         for item in items {
             index.parent_of[item.index()] = Some(id);
-            // A sequence item names a member only in Yamlfication source: a
-            // base YAML sequence is data and declares nothing (D6.6).
+            // A sequence item is a member of the sequence in Yamlfication
+            // source and data in base YAML — the file class decides, and
+            // nothing written inside the file does (D6.6).
             if declares && index.class == FileClass::Source {
-                if let Some(member) = read_item(ast, *item, symbols) {
+                if let Some(member) = read_key(ast, *item, index.class, symbols) {
                     found.push((item.index(), member));
                 }
             }
@@ -311,11 +319,14 @@ fn link_children(
     }
 }
 
-/// Read a mapping key as a member name, taking its flags off it.
+/// Read a scalar as a member name, taking its flags off it.
 ///
-/// The prefix is read only from a **plain, untagged** scalar in a source file.
-/// Quoting or tagging the name is therefore the escape, which is the mechanism
-/// D4.2 already gives for `extends` and D1.1 for `<<`, rather than a new one.
+/// Every scalar nested in a Yamlfication source file names a member — a
+/// mapping key and a sequence item alike, because a member is what nesting
+/// *is*. What quoting or tagging changes is only the **prefix**: it is read
+/// from a plain, untagged scalar, which is the escape D4.2 already gives for
+/// `extends` and D1.1 for `<<`, so `"pub literal"` is a member called
+/// `pub literal` rather than a public one called `literal`.
 fn read_key(
     ast: &Ast,
     node: NodeId,
@@ -326,18 +337,6 @@ fn read_key(
     let Some(text) = flagged(ast, node, class) else {
         return Some(Member { name: symbols.intern(&scalar.value), flags: MemberFlags::default() });
     };
-    let (flags, name) = member::split(text);
-    Some(Member { name: symbols.intern(name), flags })
-}
-
-/// Read a sequence item as a member declaration, or `None` when it is data.
-///
-/// Only a plain, untagged scalar declares a member. A quoted, tagged or
-/// collection item is a value of the sequence and names nothing — which is what
-/// keeps an ordinary list of strings in a `.yfy` from being read as a member
-/// list on the strength of an incidental signal (D6.6).
-fn read_item(ast: &Ast, node: NodeId, symbols: &mut SymbolTable) -> Option<Member> {
-    let text = flagged(ast, node, FileClass::Source)?;
     let (flags, name) = member::split(text);
     Some(Member { name: symbols.intern(name), flags })
 }

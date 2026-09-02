@@ -1546,6 +1546,32 @@ relationships above. This is the sharp consequence and it is the reason access c
 a property of the field alone: the same member of the same node is readable from one
 scope and not another, and the answer is a relation between the accessor and the holder.
 
+#### What a member is
+
+**A member is anything nested inside something else, exactly as YAML nests.** There is
+no spelling rule and no reserved key: the discriminator is the **file class**, which
+D6.6 already establishes.
+
+A `.yfy` file is **not a data store**. Everything nested in it is a member of its
+parent, and the data is what gets *evaluated from* that structure — sourced from a
+`.yaml`, or written inline as a default. A `.yaml` file is base YAML data and declares
+no members at all.
+
+*This supersedes an interim rule* under which a bare scalar sequence item was a member
+and a quoted or tagged one was data. That rule let a signal written **inside** the file
+decide a semantic question, which is precisely what D6.6 refuses one level up:
+`tags: [one, two]` and `tags: ["one", "two"]` would have been two different kinds of
+thing on the strength of two quotation marks, with nothing reported either way. They are
+one kind of thing. Quoting keeps the only job it ever had — it escapes the **prefix**,
+so `"pub literal"` is a member called `pub literal` and not a public one called
+`literal` — and it was never a claim about membership.
+
+So the mapping spelling and the sequence spelling are two spellings of one thing
+throughout: `port:` and `- port` both name a member of the node holding them, and only
+the mapping form can also state a declaration (D7.3), which is why the sequence form is
+the shorter one rather than a second model. A nested collection is nested the same way;
+it simply has no name of its own to be addressed by.
+
 #### Member flags: the two axes, written one level down
 
 **A member declares its own axes, with a prefix on its name.** This supersedes an
@@ -1634,8 +1660,9 @@ through result shape.
 
 *Fixtures:* `projects/member-flags` writes both spellings of a member list, both
 spellings of both flags in both orders, the quoted escape, a `pub` member of a `private`
-scope, a data list that declares nothing, and a member path that addresses a flagged
-member; `projects/member-collision` writes `port:` beside `pub port:`;
+scope, a quoted list whose items are members like any other, and a member path that
+addresses a flagged member; `projects/imports-data/services.yaml` writes the same shape
+one class over, where it declares nothing; `projects/member-collision` writes `port:` beside `pub port:`;
 `projects/check-access` writes all five relationships in one project;
 `projects/check-ref-reach` writes the reach outcomes — a path with no import, a path into
 a private scope (`E0216`), a `!ref` into a visible but `immutable` scope (`E0217`), a
@@ -1968,6 +1995,11 @@ header, look for a tag — decides a semantic question from an incidental signal
 file class decides it by declaration instead: **the extension states whether the file is
 written in this language.** That is also the answer to §5's file-extension item, which
 was closed on the wrong axis; see there.
+
+*Consequence for membership.* A `.yfy` is not a data store: everything nested in it is a
+member of its parent, and the data is what is evaluated from that structure. A `.yaml`
+is the data, and declares no members at all. That is the same declaration-not-heuristic
+rule read one level down, and it is D4.12's membership rule (see there).
 
 *Consequence for the extended reference.* A base YAML file declares nothing, so it holds
 **no addressable definitions**, so no path can name anything in it and it cannot be
@@ -2483,8 +2515,10 @@ mixin from polluting the graph (D7.1). What a node declares about its members is
 as a key, a tag and possibly a value — three states, of which the useful one is the
 tag with no value, meaning *required* (D7.3).
 
-A node's members may be written as a mapping, where each key names a member and its
-value declares it, or as a sequence of names, which declares that the members exist and
+A member is anything nested inside something else, exactly as YAML nests — a `.yfy` is
+not a data store, and the file class is the whole of the discriminator (D4.12). A node's
+members may be written as a mapping, where each key names a member and its value
+declares it, or as a sequence of names, which declares that the members exist and
 constrains nothing. Each member may carry `pub`/`public` and `mut`/`mutable` as a prefix
 on its name; both are opt-in and a bare member is private and immutable (D4.12).
 
