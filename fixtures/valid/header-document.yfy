@@ -4,10 +4,15 @@
 version: 1
 namespace: acme::billing
 visibility: public
-mutability: immutable
 schema: ../schema/invoice
+# `mutable`, because a `!ref` written against this scope declares an intent to
+# modify its target and is refused otherwise.
+mutability: mutable
+--- !node &cust-42
+name: Acme Corporation
 --- !node &invoice-001
-customer: !ref ../crm/cust-42
+# A plain path is a read-only reach; `!ref` is the one that declares a write.
+customer: cust-42
 lines:
   - &line-a {sku: A-1, qty: 2}
   - &line-b {sku: B-2, qty: 1}

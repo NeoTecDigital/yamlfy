@@ -48,7 +48,9 @@ use std::process::ExitCode;
 
 use tracing::{debug, info};
 use yfi_config::Config;
-use yfi_core::{discover_in, DiscoverOptions, FileClass, Project};
+use yfi_core::check::check_with;
+use yfi_core::link::link_with;
+use yfi_core::{discover_in, intern, DiscoverOptions, FileClass, Project};
 use yfi_syntax::{parse_file, Diagnostics, FileId, Severity, SeverityMap, SourceMap};
 
 /// Check every path. Exit code is 0 when no error-level diagnostic was raised
@@ -131,13 +133,20 @@ impl Run {
         let sources = std::mem::take(&mut self.sources);
         let project = discover_in(sources, &group.root, &self.options);
         let selection = select(&project, &group.paths);
+        // Every pass, not just the two that read files. `discover` and `parse`
+        // own a handful of codes; `link` and `check` own most of them, and a
+        // compiler whose semantic errors never reach the command line is one
+        // whose errors nobody can see.
+        let interned = intern(&project);
+        let linked = link_with(&project, &interned, self.severities.clone());
+        let checked = check_with(&project, &interned, &linked, self.severities.clone());
         debug!(
             root = %group.root.display(),
             files = project.files().len(),
             reported = selection.reported.len(),
             "checked project"
         );
-        self.report(&project, &selection);
+        self.report(&project, &selection, linked.diagnostics(), checked.diagnostics());
         self.sources = project.into_sources();
         for path in &selection.absent {
             self.loose(path);
@@ -145,9 +154,20 @@ impl Run {
     }
 
     /// Print the selected files' diagnostics, and their arenas when asked.
-    fn report(&mut self, project: &Project, selection: &Selection) {
+    ///
+    /// The three collections are kept apart by the passes that raise them and
+    /// are merged here, in pipeline order, so a fault is read before whatever
+    /// it caused downstream.
+    fn report(
+        &mut self,
+        project: &Project,
+        selection: &Selection,
+        linked: &Diagnostics,
+        checked: &Diagnostics,
+    ) {
         let mut selected = Diagnostics::with_severities(self.severities.clone());
-        for item in project.diagnostics().items() {
+        let passes = [project.diagnostics(), linked, checked];
+        for item in passes.iter().flat_map(|held| held.items()) {
             if item.span.is_some_and(|span| selection.hidden.contains(&span.file)) {
                 continue;
             }

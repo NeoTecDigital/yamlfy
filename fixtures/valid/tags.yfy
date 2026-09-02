@@ -1,10 +1,25 @@
 # Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# The tag vocabulary, in one file. This sits in the same directory scope as
+# `header-document.yfy` and therefore the same namespace, so its anchors are
+# named apart from that file's: one namespace, one name, one definition.
 --- !node &invoice-002
 team: !node &team-fin
   name: finance
-lines:
-  - !node &line-a {sku: A-1}
-  - !node &line-b {sku: B-2}
-refs: [*line-a, *line-b]
-owner: !edge {to: *team-fin, kind: owned_by, since: 2026-01-01}
-customer: !ref ../crm/cust-42
+items:
+  - !node &item-a {sku: A-1}
+  - !node &item-b {sku: B-2}
+refs: [*item-a, *item-b]
+--- !edge &owned-by
+# An edge is a node whose content is what it connects. `connections` is a
+# sequence, so an edge is n-ary; `definition` names positions in it, so an
+# endpoint is addressed by a name instead of by an index.
+connections: [invoice-002, team-fin]
+definition:
+  owned: 0
+  owner: 1
+since: 2026-01-01
+--- !node &audit
+# `!ref` is the mutation declaration: it says this file intends to modify its
+# target, so the target's scope must be `mutable`. A bare name reaches inside
+# this file; naming the peer file reaches across one.
+subject: !ref header-document/cust-42
