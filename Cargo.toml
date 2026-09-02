@@ -16,7 +16,7 @@ categories.workspace = true
 readme = "README.md"
 
 [workspace]
-members = ["crates/yamlfy-syntax", "crates/yamlfy-config", "crates/yamlfy-core", "crates/yamlfy-cli"]
+members = ["crates/yfi-syntax", "crates/yfi-config", "crates/yfi-core", "crates/yfi-cli"]
 exclude = ["fuzz"]
 
 [workspace.package]
@@ -31,9 +31,9 @@ keywords = ["yaml", "graph", "database", "parser", "compiler"]
 categories = ["parser-implementations", "database-implementations"]
 
 [workspace.dependencies]
-yamlfy-syntax = { path = "crates/yamlfy-syntax", version = "0.1.0" }
-yamlfy-config = { path = "crates/yamlfy-config", version = "0.1.0" }
-yamlfy-core = { path = "crates/yamlfy-core", version = "0.1.0" }
+yfi-syntax = { path = "crates/yfi-syntax", version = "0.1.0" }
+yfi-config = { path = "crates/yfi-config", version = "0.1.0" }
+yfi-core = { path = "crates/yfi-core", version = "0.1.0" }
 saphyr-parser = "0.0.12"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "json"] }
@@ -44,9 +44,9 @@ toml = "1.1"
 thiserror = "2.0"
 
 [dependencies]
-yamlfy-syntax.workspace = true
-yamlfy-config.workspace = true
-yamlfy-core.workspace = true
+yfi-syntax.workspace = true
+yfi-config.workspace = true
+yfi-core.workspace = true
 
 [lints]
 workspace = true

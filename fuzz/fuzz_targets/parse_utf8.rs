@@ -23,7 +23,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use yamlfy_syntax::{parse, ParseOptions, SourceMap};
+use yfi_syntax::{parse, ParseOptions, SourceMap};
 
 fuzz_target!(|text: String| {
     let mut sources = SourceMap::new();

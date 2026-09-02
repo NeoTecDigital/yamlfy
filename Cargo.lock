@@ -620,45 +620,45 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 name = "yamlfication"
 version = "0.1.0"
 dependencies = [
- "yamlfy-config",
- "yamlfy-core",
- "yamlfy-syntax",
+ "yfi-config",
+ "yfi-core",
+ "yfi-syntax",
 ]
 
 [[package]]
-name = "yamlfy-cli"
+name = "yfi-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "yamlfy-config",
- "yamlfy-core",
- "yamlfy-syntax",
+ "yfi-config",
+ "yfi-core",
+ "yfi-syntax",
 ]
 
 [[package]]
-name = "yamlfy-config"
+name = "yfi-config"
 version = "0.1.0"
 dependencies = [
  "serde",
  "thiserror",
  "toml",
  "tracing",
- "yamlfy-syntax",
+ "yfi-syntax",
 ]
 
 [[package]]
-name = "yamlfy-core"
+name = "yfi-core"
 version = "0.1.0"
 dependencies = [
  "tracing",
- "yamlfy-syntax",
+ "yfi-syntax",
 ]
 
 [[package]]
-name = "yamlfy-syntax"
+name = "yfi-syntax"
 version = "0.1.0"
 dependencies = [
  "saphyr-parser",

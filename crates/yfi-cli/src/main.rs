@@ -1,0 +1,108 @@
+// Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! `yamlfy` — the Yamlfication command line.
+//!
+//! Phase 1 ships one subcommand, `check`, which discovers the project a path
+//! belongs to and prints `file:line:col` diagnostics. Later passes add their own
+//! subcommands; nothing here is stubbed for them.
+
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
+mod check;
+mod logging;
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use clap::{Parser, Subcommand};
+use tracing::debug;
+use yfi_config::{Config, ProcessEnvironment};
+
+/// Command-line surface.
+#[derive(Parser)]
+#[command(name = "yamlfy", version, about = "Yamlfication compiler")]
+struct Cli {
+    /// Configuration file. Defaults to `./yamlfy.toml` when present.
+    #[arg(long, global = true, value_name = "PATH")]
+    config: Option<PathBuf>,
+
+    /// Log filter directive, for example `yfi_syntax=debug`.
+    #[arg(long, global = true, value_name = "DIRECTIVE")]
+    log: Option<String>,
+
+    /// Raise a diagnostic code to an error, as `--deny W0300`.
+    #[arg(long, global = true, value_name = "CODE")]
+    deny: Vec<String>,
+
+    /// Silence a diagnostic code, as `--allow W0300`.
+    #[arg(long, global = true, value_name = "CODE")]
+    allow: Vec<String>,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+/// Available subcommands.
+#[derive(Subcommand)]
+enum Command {
+    /// Check files or directories and report diagnostics.
+    Check {
+        /// Files or directories to check.
+        #[arg(required = true, value_name = "PATH")]
+        files: Vec<PathBuf>,
+
+        /// Project root imports resolve against. Defaults to a directory
+        /// argument itself, or to a file argument's parent directory.
+        #[arg(long, value_name = "DIR")]
+        root: Option<PathBuf>,
+
+        /// Also print the arena node table for each file.
+        #[arg(long)]
+        dump: bool,
+    },
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    let config = match build_config(&cli) {
+        Ok(config) => config,
+        Err(message) => {
+            eprintln!("yamlfy: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    let (guard, warning) = logging::init(&config.log);
+    if let Some(warning) = warning {
+        eprintln!("yamlfy: {warning}");
+    }
+    debug!(file_logging = guard.is_file_backed(), "logging ready");
+
+    match &cli.command {
+        Command::Check { files, root, dump } => {
+            if let Some(root) = root.as_deref().filter(|root| !root.is_dir()) {
+                eprintln!("yamlfy: --root {} is not a directory", root.display());
+                return ExitCode::from(2);
+            }
+            check::run(&config, files, *dump, root.as_deref())
+        }
+    }
+}
+
+fn build_config(cli: &Cli) -> Result<Config, String> {
+    let default_path = PathBuf::from("yamlfy.toml");
+    let path = cli.config.clone().unwrap_or(default_path);
+    let mut config =
+        Config::load(Some(path.as_path()), &ProcessEnvironment).map_err(|e| e.to_string())?;
+    if let Some(filter) = &cli.log {
+        config.log.filter = filter.clone();
+    }
+    for code in &cli.deny {
+        config.set_severity(code, "error").map_err(|e| e.to_string())?;
+    }
+    for code in &cli.allow {
+        config.set_severity(code, "allow").map_err(|e| e.to_string())?;
+    }
+    Ok(config)
+}

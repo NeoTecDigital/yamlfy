@@ -7,12 +7,12 @@
 //! do not: read a file, parse it, and hand back everything needed to print
 //! `file:line:col` diagnostics.
 
-pub use yamlfy_config as config;
-pub use yamlfy_core as core;
-pub use yamlfy_syntax as syntax;
+pub use yfi_config as config;
+pub use yfi_core as core;
+pub use yfi_syntax as syntax;
 
-use yamlfy_core::{DiscoverOptions, FileClass};
-use yamlfy_syntax::{parse_file, ParseOptions, Parsed, SourceMap};
+use yfi_core::{DiscoverOptions, FileClass};
+use yfi_syntax::{parse_file, ParseOptions, Parsed, SourceMap};
 
 /// Parse `path`, returning the source registry alongside the result so spans
 /// can be rendered.
@@ -20,7 +20,7 @@ use yamlfy_syntax::{parse_file, ParseOptions, Parsed, SourceMap};
 /// The file's class — and therefore whether the `.yfy` front end runs over it —
 /// is decided by the default extension lists (D6.6). A caller with its own
 /// lists resolves the class itself and calls
-/// [`parse_file`](yamlfy_syntax::parse_file).
+/// [`parse_file`](yfi_syntax::parse_file).
 ///
 /// Read and encoding failures are reported as diagnostics, not as a `Result`.
 pub fn check_file(path: impl AsRef<std::path::Path>, options: &ParseOptions) -> (SourceMap, Parsed) {

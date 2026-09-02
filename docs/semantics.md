@@ -88,7 +88,7 @@ rule there is no way to store a literal `<<` key at all.
 coexist in one mapping without a duplicate-key error.
 
 Fixture: `fixtures/merge/quoted-merge-key-is-literal.yml`.
-Implemented: `yamlfy_syntax::is_merge_key`; `Entry::merge` on every mapping entry.
+Implemented: `yfi_syntax::is_merge_key`; `Entry::merge` on every mapping entry.
 
 ### D1.2 — Resolution order within one mapping
 
@@ -503,7 +503,7 @@ parsed and kept.
 | `E0240` | error | unresolved import (D6.7) | discover |
 | `E0241` | error | import target not visible (D6.7, D6.5) | discover |
 
-Nothing from `E0211` down is implemented in `yamlfy-syntax`; each needs more than one
+Nothing from `E0211` down is implemented in `yfi-syntax`; each needs more than one
 file. `E0211`, `E0213`, `E0214`, `E0218` and `E0230`'s duplicate-definition condition are
 **raised by `link`** (pass 4), which walks every path against the project's scope tree
 and builds the inheritance graph. **`E0212` is raised by `check`** (pass 5), which runs
@@ -531,7 +531,7 @@ rule spans two things only one pass can see. `link` reports a contributed key th
 which needs a resolved base. The sets do not overlap, so no contribution is warned about
 twice.
 `E0222`, `E0231`, `E0240` and `E0241` need only a file class or a project
-tree, both of which `discover` holds, and are raised there in `yamlfy-core` — `E0241`
+tree, both of which `discover` holds, and are raised there in `yfi-core` — `E0241`
 alongside `E0240`, in import resolution, because the scope tree is final by then and
 the binding pass would report a cyclic component's import once per rebinding round.
 The rest are listed so the numbering is stable. **No code is
@@ -903,7 +903,7 @@ Two spellings therefore reach a definition in another file, and they are not
 alternatives so much as different questions:
 
 ```yaml
---- !yamlfy/header
+--- !yfi/header
 namespace: acme::web
 imports:
   - core/service.yfy        # brings `&Service` in as an ordinary anchor
@@ -1001,7 +1001,7 @@ One grimoire, one document, `namespace: guild::stock`. The Guildmaster wrote the
 half; an apprentice writes the bottom half.
 
 ```yaml
---- !yamlfy/header
+--- !yfi/header
 namespace: guild::stock
 ---
 water: &water
@@ -1980,13 +1980,13 @@ own. A team that wants a base YAML's data to carry a canonical name imports it i
 
 *Fixtures.* The two files this decision reclassified have been renamed and are now
 `fixtures/valid/header-document.yfy` and `fixtures/valid/tags.yfy`; they write
-`!yamlfy/header`, `!node`, `!edge` and `!ref`, which D6.6 makes meaningless in a `.yml`
+`!yfi/header`, `!node`, `!edge` and `!ref`, which D6.6 makes meaningless in a `.yml`
 file, and they carried the wrong extension only because they predate the split. The rest
 of `fixtures/` is genuinely base YAML — `fixtures/merge/*`, `fixtures/shadowing/*` and
 `fixtures/cycles/*` exercise `<<`, anchors and aliases, all of which §1 and §2 govern in
 both classes — and stays as it is.
 `projects/nested-namespaces/net/edge.yaml` is the case that catches a wrong
-implementation: it writes a `!yamlfy/header` document, a nonsense axis value and an
+implementation: it writes a `!yfi/header` document, a nonsense axis value and an
 `extends` key, all of which are inert because the file is base YAML.
 `projects/reserved-tag/objects.yaml` is the same test for the tag vocabulary.
 
@@ -2028,7 +2028,7 @@ this way, base YAML is only reachable this way (D6.6), and when two files define
 name the header is the only place an *authored* order exists.
 
 ```yaml
---- !yamlfy/header
+--- !yfi/header
 namespace: acme::web
 import:
   - core/service.yfy        # definitions
@@ -2464,10 +2464,10 @@ cites the decision that owns it.
 
 | name | is |
 |---|---|
-| **Yamlfication** | the ecosystem |
+| **Yamlfication** | the ecosystem, and the runtime engine |
 | **yfi** | the syntax |
 | **`.yfy`** | the file format |
-| **`yamlfy`** | the engine you invoke |
+| **`yamlfy`** | the runtime execution — what you invoke to run the engine |
 
 You `yamlfy` the `yfi`.
 

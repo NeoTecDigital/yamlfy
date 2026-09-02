@@ -1,6 +1,6 @@
 # Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 # The value of a merge key must be a mapping or a sequence of mappings.
-# Error E0211, raised by the link pass (not by yamlfy-syntax).
+# Error E0211, raised by the link pass (not by yfi-syntax).
 --- !node
 scalar: &scalar just-a-string
 derived:

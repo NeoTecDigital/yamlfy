@@ -211,11 +211,11 @@ name = "yamlfy-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
- "yamlfy-syntax",
+ "yfi-syntax",
 ]
 
 [[package]]
-name = "yamlfy-syntax"
+name = "yfi-syntax"
 version = "0.1.0"
 dependencies = [
  "saphyr-parser",

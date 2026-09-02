@@ -7,10 +7,10 @@ A graph database whose source is a language. You `yamlfy` the `yfi`.
 
 | name | is |
 |---|---|
-| **Yamlfication** | the ecosystem |
+| **Yamlfication** | the ecosystem, and the runtime engine |
 | **yfi** | the syntax |
 | **`.yfy`** | the file format |
-| **`yamlfy`** | the engine you invoke |
+| **`yamlfy`** | the runtime execution — what you invoke to run the engine |
 
 ## Two kinds of file
 
