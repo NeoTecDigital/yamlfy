@@ -91,11 +91,7 @@ pub struct Clause {
 
 /// Collect every clause of the project, reporting `E0211` for each illegal
 /// operand and keeping the legal ones.
-pub(crate) fn collect(
-    ctx: &Ctx,
-    refs: &References,
-    diagnostics: &mut Diagnostics,
-) -> Vec<Clause> {
+pub(crate) fn collect(ctx: &Ctx, refs: &References, diagnostics: &mut Diagnostics) -> Vec<Clause> {
     let mut out = Vec::new();
     for file in ctx.project.files() {
         for position in 0..file.ast.nodes().len() {
@@ -143,10 +139,7 @@ fn operands(
     let Some(items) = ast.items(value) else {
         return one(ctx, refs, file, kind, value, diagnostics).into_iter().collect();
     };
-    items
-        .iter()
-        .filter_map(|item| one(ctx, refs, file, kind, *item, diagnostics))
-        .collect()
+    items.iter().filter_map(|item| one(ctx, refs, file, kind, *item, diagnostics)).collect()
 }
 
 fn one(

@@ -136,12 +136,7 @@ fn classify(
         trace!(path = %path.display(), "extension classifies as neither source nor data");
         return;
     };
-    found.push(Candidate {
-        relative,
-        identity: identity(path),
-        path: path.to_path_buf(),
-        class,
-    });
+    found.push(Candidate { relative, identity: identity(path), path: path.to_path_buf(), class });
 }
 
 /// The real identity of a path, exposed so the caller can resolve an import

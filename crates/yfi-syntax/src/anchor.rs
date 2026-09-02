@@ -176,15 +176,7 @@ impl AnchorTable {
     ) -> AnchorId {
         let id = AnchorId(u32::try_from(self.defs.len()).expect("anchor table overflow"));
         let shadows = self.latest.get(name).copied();
-        self.defs.push(AnchorDef {
-            id,
-            name: name.into(),
-            node,
-            span,
-            document,
-            shadows,
-            source,
-        });
+        self.defs.push(AnchorDef { id, name: name.into(), node, span, document, shadows, source });
         self.latest.insert(name.into(), id);
         self.by_raw.insert(raw, id);
         id

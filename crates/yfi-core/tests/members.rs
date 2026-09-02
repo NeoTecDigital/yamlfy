@@ -112,8 +112,12 @@ fn a_public_member_of_a_private_scope_is_public_only_inside_it() {
     assert_eq!(entries.reach.visibility, Visibility::Private, "the scope composes over it");
     assert_eq!(entries.reach.mutability, Mutability::Mutable, "the scope says `mutable`");
     let scopes = fixture.project.scopes();
-    assert!(entries.is_readable_from(scopes, common::scope_by(&fixture.project, "member-flags/vault")));
-    assert!(!entries.is_readable_from(scopes, common::scope_by(&fixture.project, "member-flags/app")));
+    assert!(
+        entries.is_readable_from(scopes, common::scope_by(&fixture.project, "member-flags/vault"))
+    );
+    assert!(
+        !entries.is_readable_from(scopes, common::scope_by(&fixture.project, "member-flags/app"))
+    );
 }
 
 #[test]
@@ -263,9 +267,6 @@ fn two_keys_naming_one_member_are_e0110_however_they_are_spelled() {
     let found = fixture.linked.diagnostics();
     let rendered = found.render(fixture.project.sources());
     assert_eq!(common::count(found, Code::DuplicateKey), 1, "{rendered}");
-    assert!(
-        rendered.contains("app.yfy:9:3: `pub port` names the member `port`"),
-        "{rendered}"
-    );
+    assert!(rendered.contains("app.yfy:9:3: `pub port` names the member `port`"), "{rendered}");
     assert!(rendered.contains("first declared here"), "{rendered}");
 }

@@ -61,8 +61,8 @@
 
 pub mod anchor;
 pub mod ast;
-pub mod front;
 pub mod diagnostic;
+pub mod front;
 pub mod mapping;
 pub mod parse;
 pub mod span;

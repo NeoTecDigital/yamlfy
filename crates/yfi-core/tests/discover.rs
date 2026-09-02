@@ -14,7 +14,11 @@ use yfi_syntax::{Code, FileId, SourceMap};
 fn every_file_lands_in_one_source_map() {
     let project = common::open_clean("nested-namespaces");
     let ids: HashSet<_> = project.files().iter().map(|f| f.id).collect();
-    assert_eq!(ids.len(), project.files().len(), "a per-file source map would collide on FileId(0)");
+    assert_eq!(
+        ids.len(),
+        project.files().len(),
+        "a per-file source map would collide on FileId(0)"
+    );
     for (rank, file) in project.files().iter().enumerate() {
         assert_eq!(file.rank as usize, rank);
         assert_eq!(project.rank(file.id), Some(file.rank));
@@ -177,11 +181,7 @@ fn an_undeclared_root_defaults_to_private_and_immutable() {
 fn one_namespace_naming_two_directories_is_e0230() {
     let project = common::open("duplicate-namespace");
     let rendered = project.diagnostics().render(project.sources());
-    assert_eq!(
-        common::count(project.diagnostics(), Code::DuplicateNamespace),
-        1,
-        "{rendered}"
-    );
+    assert_eq!(common::count(project.diagnostics(), Code::DuplicateNamespace), 1, "{rendered}");
     assert!(rendered.contains("first claimed here"), "{rendered}");
 }
 

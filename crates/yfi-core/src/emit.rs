@@ -195,8 +195,11 @@ fn header_document(ctx: &Ctx, file: FileId) -> Option<u32> {
 /// cannot be read for sorts last rather than first, so recovery debris never
 /// displaces written source.
 fn order_of(ctx: &Ctx, place: Place) -> SourceOrder {
-    source_order(ctx.project, ctx.interned, place.0, place.1)
-        .unwrap_or(SourceOrder { file: u32::MAX, document: u32::MAX, byte: u32::MAX })
+    source_order(ctx.project, ctx.interned, place.0, place.1).unwrap_or(SourceOrder {
+        file: u32::MAX,
+        document: u32::MAX,
+        byte: u32::MAX,
+    })
 }
 
 /// One record per node, in id order.
@@ -344,8 +347,7 @@ fn connection_items(checked: &Checked) -> HashSet<Place> {
 /// `!ref` in the graph while saying nothing the flag does not.
 fn reference_edges(ctx: &Ctx, linked: &Linked, out: &mut Vec<RawEdge>) {
     for held in linked.references().iter().filter(|held| held.role == RefRole::Data) {
-        let (Some(target), Some(from)) = (held.target, holder_of(ctx, held.file, held.node))
-        else {
+        let (Some(target), Some(from)) = (held.target, holder_of(ctx, held.file, held.node)) else {
             continue;
         };
         out.push(RawEdge {
@@ -363,12 +365,7 @@ fn reference_edges(ctx: &Ctx, linked: &Linked, out: &mut Vec<RawEdge>) {
 /// The data edges an **alias** writes. An alias standing as a clause operand is
 /// that clause's edge already, so it is skipped here rather than recorded twice
 /// under two kinds.
-fn alias_edges(
-    ctx: &Ctx,
-    linked: &Linked,
-    connections: HashSet<Place>,
-    out: &mut Vec<RawEdge>,
-) {
+fn alias_edges(ctx: &Ctx, linked: &Linked, connections: HashSet<Place>, out: &mut Vec<RawEdge>) {
     let operands: HashSet<Place> = linked
         .clauses()
         .iter()

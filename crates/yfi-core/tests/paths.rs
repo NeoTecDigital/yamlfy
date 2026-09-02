@@ -67,9 +67,10 @@ fn e0213_names_every_path_that_resolves_to_nothing() {
     let rendered = fixture.rendered();
     assert_eq!(fixture.count(Code::UnresolvedRef), 4, "{rendered}");
     assert!(
-        rendered.contains("app.yfy:10:15: `Nowhere` names nothing: no definition called \
-                           `Nowhere` in `app.yfy`")
-            && rendered.contains("only an anchored collection is addressable"),
+        rendered.contains(
+            "app.yfy:10:15: `Nowhere` names nothing: no definition called \
+                           `Nowhere` in `app.yfy`"
+        ) && rendered.contains("only an anchored collection is addressable"),
         "a bare name is sought in the file that wrote it, and the message says which:\n{rendered}"
     );
     assert!(
@@ -234,4 +235,3 @@ fn a_ref_in_base_yaml_is_an_ordinary_tag_and_resolves_nothing() {
         "and its `extends:` is a field, not a clause"
     );
 }
-

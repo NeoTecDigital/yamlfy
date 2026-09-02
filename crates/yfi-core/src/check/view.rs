@@ -238,12 +238,7 @@ impl View {
 }
 
 /// One member crossing one relationship, or `None` when it does not cross.
-fn carry(
-    field: &Field,
-    relation: Relation,
-    holder: ScopeId,
-    scopes: &ScopeTree,
-) -> Option<Field> {
+fn carry(field: &Field, relation: Relation, holder: ScopeId, scopes: &ScopeTree) -> Option<Field> {
     if relation == Relation::Inclusion {
         // Containment: the member stays the source's, gate and all — including
         // the flags it was declared with, which are part of that gate.
@@ -264,8 +259,7 @@ fn carry(
     // that gates it. Asking "is it public" instead would drop an ancestor's
     // ordinary member on a chain written entirely inside one directory, where no
     // boundary is being crossed and nothing is being republished.
-    let descended =
-        Field { acquired: Acquisition::Descended, reach: regated, ..*field };
+    let descended = Field { acquired: Acquisition::Descended, reach: regated, ..*field };
     field.is_readable_from(scopes, holder).then_some(descended)
 }
 

@@ -20,9 +20,7 @@
 use saphyr_parser::Event;
 
 use crate::anchor::AnchorId;
-use crate::ast::{
-    AliasRef, Ast, Node, NodeId, NodeKind, Range32, Scalar, ScalarStyle, Tag,
-};
+use crate::ast::{AliasRef, Ast, Node, NodeId, NodeKind, Range32, Scalar, ScalarStyle, Tag};
 use crate::diagnostic::{Code, Diagnostic, Diagnostics, SeverityMap};
 use crate::mapping;
 use crate::parse::Import;
@@ -304,11 +302,7 @@ impl<'a> Builder<'a> {
             return;
         };
         let cross = self.check_document_scope(anchor, &name, span);
-        self.ast.aliases.push(AliasRef {
-            anchor,
-            name: name.into(),
-            cross_document: cross,
-        });
+        self.ast.aliases.push(AliasRef { anchor, name: name.into(), cross_document: cross });
         let kind = NodeKind::Alias(last_index(self.ast.aliases.len()));
         self.emit_node(kind, span, None, None);
     }
@@ -360,11 +354,8 @@ impl<'a> Builder<'a> {
 
     fn intern_tag(&mut self, tag: Option<&saphyr_parser::Tag>) -> Option<u32> {
         let tag = tag?;
-        let existing = self
-            .ast
-            .tags
-            .iter()
-            .position(|t| *t.handle == *tag.handle && *t.suffix == *tag.suffix);
+        let existing =
+            self.ast.tags.iter().position(|t| *t.handle == *tag.handle && *t.suffix == *tag.suffix);
         Some(match existing {
             Some(i) => as_u32(i),
             None => {

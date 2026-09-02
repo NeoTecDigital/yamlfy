@@ -334,9 +334,8 @@ impl<'a> Image<'a> {
     /// Every node the image holds, abstract ones included, in source order.
     /// An abstract node is a vertex of the `is_a` axis and is not output.
     pub fn nodes(&self) -> impl Iterator<Item = ModelView<'_>> + '_ {
-        (0..self.models.len()).filter_map(|at| {
-            self.model(ModelId(u32::try_from(at).expect("image overflow")))
-        })
+        (0..self.models.len())
+            .filter_map(|at| self.model(ModelId(u32::try_from(at).expect("image overflow"))))
     }
 
     /// Every `!edge` node the image holds, in source order (D4.13).

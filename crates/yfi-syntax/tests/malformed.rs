@@ -57,11 +57,7 @@ fn every_duplicate_key_is_reported_not_just_the_first() {
 fn recovery_reports_a_syntax_error_in_each_broken_document() {
     let (_, parsed) = parse("malformed/multi-error-multidoc.yml");
     assert_eq!(count(&parsed.diagnostics, Code::SyntaxError), 2);
-    assert_eq!(
-        parsed.ast.documents().len(),
-        1,
-        "the one intact document is still parsed and kept"
-    );
+    assert_eq!(parsed.ast.documents().len(), 1, "the one intact document is still parsed and kept");
 }
 
 #[test]

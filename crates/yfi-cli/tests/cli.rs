@@ -180,8 +180,7 @@ fn an_import_naming_nothing_is_reported_as_an_unresolved_import() {
 fn an_import_that_cannot_see_its_target_is_reported_at_the_import() {
     let path = project("import-private/open/user.yfy");
     let root = project("import-private");
-    let output =
-        yamlfy(&["check", "--root", root.to_str().unwrap(), path.to_str().unwrap()]);
+    let output = yamlfy(&["check", "--root", root.to_str().unwrap(), path.to_str().unwrap()]);
     let text = stdout(&output);
 
     assert!(!output.status.success());

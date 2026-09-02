@@ -135,9 +135,7 @@ fn is_name(part: &str) -> Option<&str> {
     if !first.is_ascii_alphabetic() && first != '_' {
         return None;
     }
-    chars
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        .then_some(part)
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-').then_some(part)
 }
 
 /// Why a path named nothing.
@@ -230,8 +228,8 @@ pub(crate) fn resolve(
         Landing::File(file) => table.in_file(file, name),
         Landing::Scope(scope) => table.in_scope(scope, name),
     };
-    let base = found
-        .ok_or_else(|| Failure::NoDefinition(name.clone(), where_it_landed(ctx, &landing)))?;
+    let base =
+        found.ok_or_else(|| Failure::NoDefinition(name.clone(), where_it_landed(ctx, &landing)))?;
     members(ctx, base, &path.members)
 }
 
@@ -273,7 +271,9 @@ fn walk(ctx: &Ctx, space: &Space, origin: FileId, path: &Path) -> Result<Landing
         };
         landing = match space.child(at, segment) {
             Some(child) => Landing::Scope(child),
-            None => Landing::File(space.stem(at, segment).ok_or(Failure::NoSegment(segment.clone()))?),
+            None => {
+                Landing::File(space.stem(at, segment).ok_or(Failure::NoSegment(segment.clone()))?)
+            }
         };
     }
     Ok(landing)
@@ -310,9 +310,7 @@ pub(crate) fn members(
 fn member(ctx: &Ctx, at: (FileId, NodeId), name: &str) -> Option<NodeId> {
     let ast = ctx.ast(at.0)?;
     let named = |node: NodeId| {
-        ctx.interned
-            .key_of(at.0, node)
-            .and_then(|symbol| ctx.interned.symbols().resolve(symbol))
+        ctx.interned.key_of(at.0, node).and_then(|symbol| ctx.interned.symbols().resolve(symbol))
             == Some(name)
     };
     if let Some(items) = ast.items(at.1) {

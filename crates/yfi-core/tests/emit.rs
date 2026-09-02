@@ -346,10 +346,8 @@ fn an_extended_reference_is_a_kind_and_still_carries_the_declaration() {
     // answered by matching a kind *and* a flag, in two places.
     let fixture = open("check-private-inherit");
     let image = image(&fixture);
-    let audit = image
-        .nodes()
-        .find(|held| held.name() == Some("Audit"))
-        .expect("the extended reference");
+    let audit =
+        image.nodes().find(|held| held.name() == Some("Audit")).expect("the extended reference");
     let written: Vec<(&str, bool)> =
         audit.out().iter().map(|edge| (edge.kind.as_str(), edge.capability)).collect();
     assert_eq!(written, [("extends !ref", true)]);
@@ -370,10 +368,8 @@ fn a_header_document_is_not_a_node_of_the_graph() {
         let Some(header) = file.header.as_ref() else { continue };
         let document = fixture.interned.document_of(file.id, header.node);
         assert!(
-            !image
-                .nodes()
-                .any(|held| held.file() == file.id
-                    && fixture.interned.document_of(file.id, held.node()) == document),
+            !image.nodes().any(|held| held.file() == file.id
+                && fixture.interned.document_of(file.id, held.node()) == document),
             "the header of {} is emitted",
             file.relative.display()
         );

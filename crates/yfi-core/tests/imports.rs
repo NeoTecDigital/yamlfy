@@ -83,14 +83,10 @@ fn yamlfication_tags_are_inert_in_a_data_file() {
     assert_eq!(interned.class_of(edge), Some(FileClass::Data));
 
     let source = common::file_id(&project, "service.yfy");
-    let source_kinds: Vec<TagKind> = (0..project
-        .file(source)
-        .expect("service.yfy")
-        .ast
-        .nodes()
-        .len())
-        .filter_map(|i| interned.tag_kind(source, NodeId(i as u32)))
-        .collect();
+    let source_kinds: Vec<TagKind> =
+        (0..project.file(source).expect("service.yfy").ast.nodes().len())
+            .filter_map(|i| interned.tag_kind(source, NodeId(i as u32)))
+            .collect();
     assert!(source_kinds.contains(&TagKind::Header), "the same tag is live in source");
 }
 
@@ -205,16 +201,14 @@ fn importing_does_not_launder_a_private_definition() {
         "the path names a real file, so this is not `E0240`:\n{rendered}"
     );
     assert!(
-        rendered.contains(
-            "open/user.yfy:7:11: `secret/hidden.yfy` names a file this scope cannot see"
-        ),
+        rendered
+            .contains("open/user.yfy:7:11: `secret/hidden.yfy` names a file this scope cannot see"),
         "the primary span is the import entry, in the header the author wrote:\n{rendered}"
     );
     assert!(
         rendered.contains("note: ")
-            && rendered.contains(
-                "secret/hidden.yfy:6:13 `import-private/secret` is declared `private`"
-            ),
+            && rendered
+                .contains("secret/hidden.yfy:6:13 `import-private/secret` is declared `private`"),
         "and the note names the scope that blocked it, at its `visibility:`:\n{rendered}"
     );
 
@@ -253,9 +247,8 @@ fn an_unreachable_import_is_diagnosed_at_the_import_and_not_at_the_alias() {
         "the cause is diagnosed, once:\n{rendered}"
     );
     assert!(
-        rendered.contains(
-            "open/user.yfy:7:11: `secret/hidden.yfy` names a file this scope cannot see"
-        ),
+        rendered
+            .contains("open/user.yfy:7:11: `secret/hidden.yfy` names a file this scope cannot see"),
         "at the import entry, not at line 9 where `*Secret` is written:\n{rendered}"
     );
     assert!(
@@ -465,7 +458,10 @@ fn the_shared_parser_reads_both_classes_and_only_the_class_differs() {
     let header = file.header.as_ref().expect("a source file's header is read");
     assert_eq!(header.namespace.as_ref().map(|(n, _)| &**n), Some("acme::billing"));
     assert!(header.imports.is_empty());
-    assert!(!source.diagnostics().has_errors(), "an unknown header key such as `schema` is ignored");
+    assert!(
+        !source.diagnostics().has_errors(),
+        "an unknown header key such as `schema` is ignored"
+    );
 
     let tags = common::open_at("fixtures/valid/tags.yfy");
     let interned = intern(&tags);

@@ -23,7 +23,10 @@ use yfi_syntax::{parse_file, ParseOptions, Parsed, SourceMap};
 /// [`parse_file`](yfi_syntax::parse_file).
 ///
 /// Read and encoding failures are reported as diagnostics, not as a `Result`.
-pub fn check_file(path: impl AsRef<std::path::Path>, options: &ParseOptions) -> (SourceMap, Parsed) {
+pub fn check_file(
+    path: impl AsRef<std::path::Path>,
+    options: &ParseOptions,
+) -> (SourceMap, Parsed) {
     let path = path.as_ref();
     let class = DiscoverOptions::default().class_of(path).unwrap_or(FileClass::Data);
     let mut sources = SourceMap::new();

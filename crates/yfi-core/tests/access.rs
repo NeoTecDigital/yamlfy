@@ -63,9 +63,8 @@ fn e0216_fires_on_a_path_into_a_scope_the_referencing_scope_cannot_see() {
     let rendered = fixture.rendered();
     assert_eq!(fixture.count(Code::RefNotVisible), 2, "{rendered}");
     assert!(
-        rendered.contains(
-            "peek.yfy:9:14: `../vault/Secret` names a definition this scope cannot see"
-        ),
+        rendered
+            .contains("peek.yfy:9:14: `../vault/Secret` names a definition this scope cannot see"),
         "{rendered}"
     );
     assert!(
@@ -104,7 +103,10 @@ fn e0217_fires_on_a_ref_whose_target_may_not_be_written_from_here() {
 fn a_ref_into_a_public_mutable_scope_is_clean() {
     let fixture = open("check-ref-reach");
     let rendered = fixture.rendered();
-    assert!(!rendered.contains("../mut/Open"), "an explicit `mutable` admits the write:\n{rendered}");
+    assert!(
+        !rendered.contains("../mut/Open"),
+        "an explicit `mutable` admits the write:\n{rendered}"
+    );
 }
 
 #[test]
@@ -117,8 +119,10 @@ fn visibility_is_decided_before_writability() {
     let fixture = open("check-ref-reach");
     let rendered = fixture.rendered();
     assert!(
-        rendered.contains("peek.yfy:10:17: `../vault/Secret` names a definition this scope \
-                           cannot see"),
+        rendered.contains(
+            "peek.yfy:10:17: `../vault/Secret` names a definition this scope \
+                           cannot see"
+        ),
         "the `!ref` into a private *and* immutable scope reports the visibility gate:\n{rendered}"
     );
     assert!(

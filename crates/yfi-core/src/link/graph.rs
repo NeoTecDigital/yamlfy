@@ -289,7 +289,6 @@ fn capability(graph: &mut Graph, reference: &Reference) {
     });
 }
 
-
 fn add(graph: &mut Graph, clause: &Clause, operand: &Operand) {
     let kind = match (clause.kind, operand.form) {
         (ClauseKind::Inclusion, _) => EdgeKind::Inclusion,
@@ -341,8 +340,7 @@ mod tests {
         let graph = build(&[clause(1, 2, ClauseKind::Inclusion, OperandForm::Alias)], &[]);
         for node in [1u32, 2] {
             let own = graph.vertex_of(FileId(0), NodeId(node), Stratum::Own).expect("own");
-            let resolved =
-                graph.vertex_of(FileId(0), NodeId(node), Stratum::Resolved).expect("R");
+            let resolved = graph.vertex_of(FileId(0), NodeId(node), Stratum::Resolved).expect("R");
             assert_eq!(graph.vertex(own).expect("vertex").stratum, Stratum::Own);
             assert_eq!(graph.vertex(resolved).expect("vertex").stratum, Stratum::Resolved);
         }

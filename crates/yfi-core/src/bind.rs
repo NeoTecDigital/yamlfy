@@ -237,10 +237,7 @@ fn prelude_for(
             );
             continue;
         }
-        out.extend(exports[other].iter().map(|e| Import {
-            name: e.name.clone(),
-            span: e.span,
-        }));
+        out.extend(exports[other].iter().map(|e| Import { name: e.name.clone(), span: e.span }));
     }
     out
 }

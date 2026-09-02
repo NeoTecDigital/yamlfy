@@ -31,8 +31,7 @@ use std::path::{Path, PathBuf};
 
 use tracing::{debug, info};
 use yfi_syntax::{
-    parse_file, Ast, Code, Diagnostic, Diagnostics, Dialect, FileId, ParseOptions, SourceMap,
-    Span,
+    parse_file, Ast, Code, Diagnostic, Diagnostics, Dialect, FileId, ParseOptions, SourceMap, Span,
 };
 
 use crate::bind;
@@ -285,8 +284,7 @@ pub fn discover_in(
     let (base, candidates) = candidates(root, options, &mut sources, &mut diagnostics);
     let mut scopes = ScopeTree::new();
     let directories = directory_scopes(&base, &candidates, &mut scopes);
-    let (mut files, mut per_file) =
-        load(&candidates, &directories, options, &mut sources);
+    let (mut files, mut per_file) = load(&candidates, &directories, options, &mut sources);
 
     // Claims first: visibility is declared in headers, and the binding pass
     // reads it back to decide whether an import may reach what it names.
@@ -357,19 +355,19 @@ fn candidates(
     }
     let found = walk::collect(root, options);
     for error in &found.errors {
-        unreadable(sources, diagnostics, &error.path, &format!("cannot read directory: {}", error.message));
+        unreadable(
+            sources,
+            diagnostics,
+            &error.path,
+            &format!("cannot read directory: {}", error.message),
+        );
     }
     (root.to_path_buf(), found.candidates)
 }
 
 /// Register a path that carries no text so a diagnostic about it still has a
 /// span. `parse_file` does the same for a file it cannot read.
-fn unreadable(
-    sources: &mut SourceMap,
-    diagnostics: &mut Diagnostics,
-    path: &Path,
-    message: &str,
-) {
+fn unreadable(sources: &mut SourceMap, diagnostics: &mut Diagnostics, path: &Path, message: &str) {
     let id = sources.add(path, "");
     let span = Span::empty(id, sources.file(id).pos_at_char(0));
     diagnostics.push(Diagnostic::new(Code::IoError, span, message.to_owned()));
@@ -492,6 +490,10 @@ mod tests {
         };
         assert_eq!(options.class_of(Path::new("a.yml")), Some(FileClass::Source));
         assert_eq!(options.class_of(Path::new("a.json")), Some(FileClass::Data));
-        assert_eq!(options.class_of(Path::new("a.yfy")), None, "the default is replaced, not added");
+        assert_eq!(
+            options.class_of(Path::new("a.yfy")),
+            None,
+            "the default is replaced, not added"
+        );
     }
 }

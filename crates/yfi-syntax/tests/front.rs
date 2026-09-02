@@ -196,8 +196,10 @@ fn none_of_it_happens_in_base_yaml() {
     let text = "a: 1 // not a comment\nb: <?-- not a block -->\n";
     let (_, parsed) = read("p.yml", text, Dialect::BaseYaml);
     let doc = parsed.ast.documents()[0].root;
-    assert_eq!(&*parsed.ast.scalar(common::value_of(&parsed.ast, doc, "a")).expect("s").value,
-               "1 // not a comment");
+    assert_eq!(
+        &*parsed.ast.scalar(common::value_of(&parsed.ast, doc, "a")).expect("s").value,
+        "1 // not a comment"
+    );
     let b = common::value_of(&parsed.ast, doc, "b");
     assert_eq!(parsed.ast.scalar(b).expect("s").style, ScalarStyle::Plain);
     assert_eq!(&*parsed.ast.scalar(b).expect("s").value, "<?-- not a block -->");

@@ -147,10 +147,7 @@ fn inert(
              reference may add a key to a base but never change one, so this does nothing"
         ),
     )
-    .with_note(
-        "the base defines it here",
-        Some(span_of(ctx, contribution.base.0, existing.key)),
-    )
+    .with_note("the base defines it here", Some(span_of(ctx, contribution.base.0, existing.key)))
     .with_note(
         "contributed through this extended reference",
         Some(span_of(ctx, contribution.file, contribution.operand)),

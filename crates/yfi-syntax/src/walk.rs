@@ -18,12 +18,9 @@ impl Ast {
     pub fn children(&self, id: NodeId) -> Vec<NodeId> {
         match self.node(id).kind {
             NodeKind::Sequence(_) => self.items(id).unwrap_or_default().to_vec(),
-            NodeKind::Mapping(_) => self
-                .entries(id)
-                .unwrap_or_default()
-                .iter()
-                .flat_map(|e| [e.key, e.value])
-                .collect(),
+            NodeKind::Mapping(_) => {
+                self.entries(id).unwrap_or_default().iter().flat_map(|e| [e.key, e.value]).collect()
+            }
             _ => Vec::new(),
         }
     }

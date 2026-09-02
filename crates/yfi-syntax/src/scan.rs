@@ -117,11 +117,7 @@ fn each_anchor_token(file: &SourceFile, lo: usize, hi: usize, mut visit: impl Fn
 /// `hi`, searching the region `[lo, hi)`.
 ///
 /// Returns the character range of the `&name` token, `&` included.
-pub(crate) fn find_anchor_token(
-    file: &SourceFile,
-    lo: usize,
-    hi: usize,
-) -> Option<TokenRange> {
+pub(crate) fn find_anchor_token(file: &SourceFile, lo: usize, hi: usize) -> Option<TokenRange> {
     let mut found = None;
     each_anchor_token(file, lo, hi, |token| found = Some(token));
     found

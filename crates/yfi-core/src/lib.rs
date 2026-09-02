@@ -77,11 +77,11 @@ pub mod scope;
 pub mod symbol;
 pub mod tags;
 
-pub use edge::{CONNECTIONS, DEFINITION};
 pub use discover::{
     discover, discover_in, DiscoverOptions, FileClass, Project, ProjectFile,
     DEFAULT_DATA_EXTENSIONS, DEFAULT_SOURCE_EXTENSIONS,
 };
+pub use edge::{CONNECTIONS, DEFINITION};
 pub use emit::emit;
 pub use header::Header;
 pub use image::{Edge, EdgeKind, FieldView, Image, ModelId, ModelKind, ModelView, Named};

@@ -194,11 +194,7 @@ impl Interned {
     pub fn order(&self, file: FileId, node: NodeId) -> Option<NodeOrder> {
         let index = self.index(file)?;
         let document = index.document_of.get(node.index()).copied().flatten()?;
-        Some(NodeOrder {
-            file: index.rank,
-            document,
-            node: u32::try_from(node.index()).ok()?,
-        })
+        Some(NodeOrder { file: index.rank, document, node: u32::try_from(node.index()).ok()? })
     }
 }
 
@@ -254,8 +250,8 @@ fn index_file(
         .and_then(|held| index.document_of.get(held.node.index()).copied().flatten());
     for position in 0..count {
         let id = NodeId(u32::try_from(position).expect("arena overflow"));
-        let declares = header.is_none()
-            || index.document_of.get(position).copied().flatten() != header;
+        let declares =
+            header.is_none() || index.document_of.get(position).copied().flatten() != header;
         link_children(ast, id, &mut index, symbols, declares);
         if let Some(tag) = ast.tag(id) {
             index.tag_of[position] = Some((kind_in(file.class, tag), symbols.intern(&tag.suffix)));
@@ -362,15 +358,14 @@ fn document_map(ast: &Ast) -> Vec<Option<u32>> {
     let mut out = vec![None; ast.nodes().len()];
     let mut document = 0usize;
     for (position, slot) in out.iter_mut().enumerate() {
-        while document < ast.documents().len()
-            && ast.documents()[document].root.index() < position
+        while document < ast.documents().len() && ast.documents()[document].root.index() < position
         {
             document += 1;
         }
         let Some(current) = ast.documents().get(document) else { break };
         let node = ast.nodes()[position].span;
-        let within = node.start.byte >= current.span.start.byte
-            && node.start.byte <= current.span.end.byte;
+        let within =
+            node.start.byte >= current.span.start.byte && node.start.byte <= current.span.end.byte;
         if within {
             *slot = Some(u32::try_from(document).expect("document count overflow"));
         }

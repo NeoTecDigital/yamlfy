@@ -324,8 +324,8 @@ impl SourceMap {
         };
         let rewrite = front::preprocess(&written, dialect);
         let char_offsets = (!rewrite.text.is_ascii()).then(|| build_char_offsets(&rewrite.text));
-        let written_offsets = (rewrite.changed && !written.is_ascii())
-            .then(|| build_char_offsets(&written));
+        let written_offsets =
+            (rewrite.changed && !written.is_ascii()).then(|| build_char_offsets(&written));
         let line_starts = build_line_starts(&rewrite.text);
         let id = FileId(u32::try_from(self.files.len()).expect("source map overflow"));
         self.files.push(SourceFile {

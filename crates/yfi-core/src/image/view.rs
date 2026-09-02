@@ -134,9 +134,9 @@ impl<'a> ModelView<'a> {
     /// Every member, highest precedence first, unfiltered.
     pub fn fields(self) -> impl Iterator<Item = FieldView<'a>> {
         let image = self.image;
-        self.view().into_iter().flat_map(move |view| {
-            view.fields().iter().map(move |field| FieldView { image, field })
-        })
+        self.view()
+            .into_iter()
+            .flat_map(move |view| view.fields().iter().map(move |field| FieldView { image, field }))
     }
 
     /// The members an observer in `observer` may **read**, in precedence order.
@@ -144,10 +144,7 @@ impl<'a> ModelView<'a> {
     /// Filtered as it walks: an unreadable member is absent by shape, never a
     /// hole or a count, or the scoping leaks through the result. The predicate
     /// is pass 5's ([`Field::is_readable_from`]) and is not restated.
-    pub fn fields_readable_from(
-        self,
-        observer: ScopeId,
-    ) -> impl Iterator<Item = FieldView<'a>> {
+    pub fn fields_readable_from(self, observer: ScopeId) -> impl Iterator<Item = FieldView<'a>> {
         let scopes = self.image.scopes();
         self.fields().filter(move |held| held.field.is_readable_from(scopes, observer))
     }
@@ -384,4 +381,3 @@ impl std::fmt::Debug for FieldView<'_> {
             .finish()
     }
 }
-

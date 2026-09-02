@@ -162,8 +162,8 @@ pub mod pipeline {
         /// or fail for the wrong reason.
         pub fn rendered(&self) -> String {
             let mut out = String::new();
-            for held in [self.project.diagnostics(), self.linked.diagnostics(), self.checked
-                .diagnostics()]
+            for held in
+                [self.project.diagnostics(), self.linked.diagnostics(), self.checked.diagnostics()]
             {
                 out.push_str(&held.render(self.project.sources()));
             }

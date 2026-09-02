@@ -98,8 +98,7 @@ fn an_anchored_scalar_is_a_value_and_carries_no_canonical_path() {
     // `&limit 30` is written in both files. A scalar is a value, not a type,
     // so it is not addressable and the two do not collide.
     let fixture = open("link-duplicate-definition");
-    let paths: Vec<&str> =
-        fixture.linked.definitions().iter().map(|held| &*held.path).collect();
+    let paths: Vec<&str> = fixture.linked.definitions().iter().map(|held| &*held.path).collect();
     assert!(paths.contains(&"dup/Local"), "an anchored mapping is addressable: {paths:?}");
     assert!(!paths.iter().any(|path| path.ends_with("/limit")), "but a scalar is not: {paths:?}");
 }
@@ -191,7 +190,8 @@ fn w0303_reports_the_inert_half_of_a_contribution() {
     let rendered = fixture.rendered();
     assert_eq!(fixture.count(Code::InertContribution), 1, "{rendered}");
     assert!(
-        rendered.contains("apprentice.yfy:9:1: `label` is contributed to `guild::stock/BasePotion`"),
+        rendered
+            .contains("apprentice.yfy:9:1: `label` is contributed to `guild::stock/BasePotion`"),
         "the primary span is the contributed key:\n{rendered}"
     );
     assert!(
@@ -293,9 +293,15 @@ fn an_extended_reference_facing_an_inclusion_produces_the_three_edges_pass_five_
             .unwrap_or_else(|| panic!("no edge"))
     };
     let forward = edge(at(a, Stratum::Resolved), at(b, Stratum::Resolved));
-    assert_eq!((forward.kind, forward.direction), (EdgeKind::ExtendedReference, Direction::Forward));
+    assert_eq!(
+        (forward.kind, forward.direction),
+        (EdgeKind::ExtendedReference, Direction::Forward)
+    );
     let reverse = edge(at(b, Stratum::Resolved), at(a, Stratum::Own));
-    assert_eq!((reverse.kind, reverse.direction), (EdgeKind::ExtendedReference, Direction::Reverse));
+    assert_eq!(
+        (reverse.kind, reverse.direction),
+        (EdgeKind::ExtendedReference, Direction::Reverse)
+    );
     let inclusion = edge(at(b, Stratum::Resolved), at(a, Stratum::Resolved));
     assert_eq!((inclusion.kind, inclusion.direction), (EdgeKind::Inclusion, Direction::Forward));
 }
@@ -388,9 +394,8 @@ fn source_order_is_textual_where_the_arena_is_post_order() {
     let file = fixture.file("cycle.yfy");
     let root = fixture.project.file(file).expect("file").ast.documents()[1].root;
     let a = common::declaration(&fixture.project, file, "A");
-    let order = |node| {
-        source_order(&fixture.project, &fixture.interned, file, node).expect("an order")
-    };
+    let order =
+        |node| source_order(&fixture.project, &fixture.interned, file, node).expect("an order");
     assert!(a.index() < root.index(), "the child has the lower arena index");
     assert!(order(root) < order(a), "but the document root is written first");
 }

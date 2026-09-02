@@ -93,13 +93,7 @@ pub fn read(ast: &Ast, diagnostics: &mut Diagnostics) -> Option<Header> {
     Some(header)
 }
 
-fn field(
-    header: &mut Header,
-    ast: &Ast,
-    key: &str,
-    value: NodeId,
-    diagnostics: &mut Diagnostics,
-) {
+fn field(header: &mut Header, ast: &Ast, key: &str, value: NodeId, diagnostics: &mut Diagnostics) {
     let span = ast.node(value).span;
     let text = ast.scalar(value).map(|s| s.value.trim().to_owned());
     match key {

@@ -65,15 +65,13 @@ fn the_file_layer_is_applied() {
     assert_eq!(config.log.filter, "yfi_syntax=debug");
     assert_eq!(config.log.format, LogFormat::Json);
     assert_eq!(config.diagnostics.max_recovery_attempts, 3);
-    assert_eq!(
-        yfi_config::effective_severity(&config, Code::AnchorShadowed),
-        Severity::Error
-    );
+    assert_eq!(yfi_config::effective_severity(&config, Code::AnchorShadowed), Severity::Error);
 }
 
 #[test]
 fn the_environment_layer_overrides_the_file() {
-    let file = write_config("[log]\nfilter = \"warn\"\n\n[diagnostics]\nmax_recovery_attempts = 3\n");
+    let file =
+        write_config("[log]\nfilter = \"warn\"\n\n[diagnostics]\nmax_recovery_attempts = 3\n");
     let env = StaticEnvironment::new([
         ("YAMLFY_LOG", "trace"),
         ("YAMLFY_MAX_RECOVERY_ATTEMPTS", "9"),

@@ -363,10 +363,7 @@ fn site(ctx: &Ctx, file: FileId, node: NodeId) -> Option<Site> {
 /// twice as a shape fault and a failed path.
 fn is_connections_key(ctx: &Ctx, file: FileId, holder: NodeId, key: NodeId) -> bool {
     edge::declares_connections(ctx.interned, file, holder)
-        && ctx
-            .interned
-            .key_of(file, key)
-            .and_then(|name| ctx.interned.symbols().resolve(name))
+        && ctx.interned.key_of(file, key).and_then(|name| ctx.interned.symbols().resolve(name))
             == Some(edge::CONNECTIONS)
 }
 

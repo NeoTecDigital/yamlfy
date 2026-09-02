@@ -426,11 +426,8 @@ mod tests {
         // fact, so they are checked against each other rather than against a
         // hand-kept list that can drift from the printed code.
         for code in Code::all() {
-            let expected = if code.as_str().starts_with('W') {
-                Severity::Warning
-            } else {
-                Severity::Error
-            };
+            let expected =
+                if code.as_str().starts_with('W') { Severity::Warning } else { Severity::Error };
             assert_eq!(code.default_severity(), expected, "{code}");
         }
         assert_eq!(Code::AnchorShadowed.default_severity(), Severity::Warning);

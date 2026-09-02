@@ -130,13 +130,8 @@ pub(crate) fn preprocess(text: &str, dialect: Dialect) -> Rewrite {
         };
     }
     let source: Vec<char> = text.chars().collect();
-    let mut scan = Scan {
-        out: source.clone(),
-        source,
-        at: 0,
-        regions: Vec::new(),
-        faults: Vec::new(),
-    };
+    let mut scan =
+        Scan { out: source.clone(), source, at: 0, regions: Vec::new(), faults: Vec::new() };
     scan.run();
     let changed = scan.out != scan.source;
     let blocks = scan

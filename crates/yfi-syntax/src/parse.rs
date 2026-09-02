@@ -183,16 +183,12 @@ fn unterminated(source: &SourceFile, fault: &front::Fault) -> Diagnostic {
         start: source.pos_at_char(fault.start),
         end: source.pos_at_char(fault.end),
     };
-    Diagnostic::new(
-        Code::UnterminatedBlock,
-        span,
-        "this block is opened and never closed",
-    )
-    .with_note(
-        "a block ends with `-->` for code or `--!>` for documentation; \
+    Diagnostic::new(Code::UnterminatedBlock, span, "this block is opened and never closed")
+        .with_note(
+            "a block ends with `-->` for code or `--!>` for documentation; \
          the rest of this line was not read",
-        None,
-    )
+            None,
+        )
 }
 
 /// Register `path` in `sources` and parse it.
@@ -371,12 +367,7 @@ fn syntax_error(error: &ScanError, span: Span, resume: &Resume) -> Diagnostic {
     }
 }
 
-fn error_span(
-    source: &SourceFile,
-    error: &ScanError,
-    prelude: &Prelude,
-    segment: Segment,
-) -> Span {
+fn error_span(source: &SourceFile, error: &ScanError, prelude: &Prelude, segment: Segment) -> Span {
     let pos = source.pos(error.marker(), prelude.rebase(segment));
     Span::empty(source.id(), pos)
 }

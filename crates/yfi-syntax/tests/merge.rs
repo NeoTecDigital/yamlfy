@@ -89,7 +89,9 @@ fn an_inline_mapping_is_a_legal_source() {
 
 #[test]
 fn merge_chains_and_diamonds_parse_cleanly() {
-    for fixture in ["merge/transitive.yml", "cycles/merge-acyclic-chain.yml", "cycles/merge-diamond.yml"] {
+    for fixture in
+        ["merge/transitive.yml", "cycles/merge-acyclic-chain.yml", "cycles/merge-diamond.yml"]
+    {
         let (_, parsed) = parse_clean(fixture);
         assert!(parsed.ast.documents().len() == 1, "{fixture}");
     }

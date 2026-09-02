@@ -53,9 +53,9 @@ fn arbitrary_bytes_never_panic() {
 #[test]
 fn arbitrary_yaml_tokens_never_panic() {
     const TOKENS: &[&str] = &[
-        "---", "...", "&a", "&b", "*a", "*b", "<<", ":", "- ", "[", "]", "{", "}", ",", "\n",
-        "  ", "#c\n", "!node", "!!merge", "!ref", "\"", "'", "?", "|", ">", "%YAML 1.2\n", "\t",
-        "k", "v", "\u{feff}", "é",
+        "---", "...", "&a", "&b", "*a", "*b", "<<", ":", "- ", "[", "]", "{", "}", ",", "\n", "  ",
+        "#c\n", "!node", "!!merge", "!ref", "\"", "'", "?", "|", ">", "%YAML 1.2\n", "\t", "k",
+        "v", "\u{feff}", "é",
     ];
     let mut rng = Rng(0x2026_0830_c0ff_ee02);
     for _ in 0..6000 {

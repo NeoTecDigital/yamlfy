@@ -304,8 +304,12 @@ impl Run<'_> {
     /// the gate is the scope's alone. That is not a special case for data; it is
     /// what "the flags are not interpreted here" means, and it leaves an
     /// imported `.yaml`'s members exactly as readable as its directory is.
-    fn gate_of(&self, file: yfi_syntax::FileId, key: yfi_syntax::NodeId, scope: ScopeId)
-        -> FieldGate {
+    fn gate_of(
+        &self,
+        file: yfi_syntax::FileId,
+        key: yfi_syntax::NodeId,
+        scope: ScopeId,
+    ) -> FieldGate {
         let declared = match self.ctx.is_source(file) {
             true => self.ctx.interned.member_of(file, key).map(|held| held.flags),
             false => None,

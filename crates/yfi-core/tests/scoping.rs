@@ -34,10 +34,7 @@ fn axes_of(name: &str) -> Axes {
         "outside" => Axes { visible: true, writable: true },
         other => {
             let (visibility, mutability) = other.split_once('-').expect("`vis-mut` directory name");
-            Axes {
-                visible: visibility == "pub",
-                writable: mutability == "mu",
-            }
+            Axes { visible: visibility == "pub", writable: mutability == "mu" }
         }
     }
 }
