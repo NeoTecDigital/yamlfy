@@ -1,0 +1,42 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::extends
+visibility: public
+--- !node &Alpha
+pub port: 1
+--- !node &Beta
+pub port: 2
+--- !node &Gamma
+pub port: 3
+# An **abstract edge** is a `!type` that declares `connections`. There is no
+# second spelling for it: `!edge` is concrete exactly as `!node` is, and the
+# abstract counterpart of a concrete node is a `!type`, whatever the node is.
+--- !type &Relation
+pub connections:
+pub weight: !!int
+# `connections` is one member, absorbed by the ordinary shallow, left-biased
+# rule. Restating it replaces the sequence **whole**; extension never appends.
+--- !edge &Owns
+extends: Relation
+pub connections: [Alpha, Beta]
+pub weight: 3
+# A family that fixes its endpoints once...
+--- !type &Pair
+extends: Relation
+pub connections: [Alpha, Gamma]
+pub weight: 1
+# ...and a concrete edge that supplies none of its own, and has them anyway.
+--- !edge &Inherits
+extends: Pair
+# An edge extending a family that declares neither of the language's own two
+# members. `connections` is written by the language, not by the family, so it
+# is never `W0301` — otherwise the compiler would report its own vocabulary as
+# a misspelled field.
+--- !type &Labelled
+pub label: !!str untitled
+--- !edge &Named
+extends: Labelled
+pub label: owns
+pub connections: [Alpha, Beta]

@@ -44,6 +44,7 @@ use std::collections::HashSet;
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics};
 
+use crate::edge;
 use crate::link::{Ctx, EdgeId, Graph, Linked};
 use crate::symbol::Symbol;
 
@@ -211,9 +212,19 @@ fn contradicts(
 }
 
 /// `W0301` — a field no abstract ancestor declares.
+///
+/// `connections` and `definition` on an `!edge` are excepted, because they are
+/// the **language's** members and not the family's (D4.13). Without the
+/// exception an edge extending any abstract family that does not itself declare
+/// them would be warned about for writing the two members the tag requires it
+/// to write, which is the compiler reporting its own vocabulary as a typo.
 fn undeclared(ctx: &Ctx, linked: &Linked, subject: &Subject, diagnostics: &mut Diagnostics) {
+    let is_edge = edge::is_edge(ctx.interned, subject.place.0, subject.place.1);
     for field in subject.own.fields() {
         if subject.ancestors.iter().any(|(_, declared)| declared.holds(field.name)) {
+            continue;
+        }
+        if is_edge && edge::is_reserved_member(&key_text(ctx, field.name)) {
             continue;
         }
         diagnostics.push(unknown(ctx, linked, subject, field));

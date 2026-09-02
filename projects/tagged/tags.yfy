@@ -9,6 +9,17 @@ region:
 --- !node &Api
 extends: !ref Service
 port: 8443
-owner: !edge {to: *Api, kind: owns}
+# An edge is a node, and a node may be nested: this one is the member `owns` of
+# `Api`. It has no anchor and so is addressable by nothing, which is ordinary —
+# being addressable and being a node are two questions (D6.1).
+#
+# `*Api` is legal here because D2.4 registers an anchor when its node *starts*,
+# and a relation with a node at both ends is a self-loop rather than a cycle to
+# reject: only *inheritance* cycles are illegal.
+owns: !edge
+  connections: [*Api, Service]
+  definition:
+    owner: 0
+    owned: 1
 verbatim: !<node> {port: 1}
 plain: 7

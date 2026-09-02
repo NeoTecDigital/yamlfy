@@ -153,12 +153,22 @@ pub mod pipeline {
     }
 
     impl Compiled {
+        /// Every diagnostic the whole pipeline raised, not one pass's.
+        ///
+        /// `link` and `check` each keep their own collection, so asking only
+        /// the later one silently loses every code the earlier one owns —
+        /// `E0211`, `E0213`, `E0214`, `W0303` among them. A harness that cannot
+        /// see half the diagnostics makes a test that asserts one of them pass
+        /// or fail for the wrong reason.
         pub fn rendered(&self) -> String {
-            self.checked.diagnostics().render(self.project.sources())
+            let mut out = self.linked.diagnostics().render(self.project.sources());
+            out.push_str(&self.checked.diagnostics().render(self.project.sources()));
+            out
         }
 
         pub fn count(&self, code: Code) -> usize {
-            super::count(self.checked.diagnostics(), code)
+            super::count(self.linked.diagnostics(), code)
+                + super::count(self.checked.diagnostics(), code)
         }
 
         pub fn file(&self, ends_with: &str) -> FileId {

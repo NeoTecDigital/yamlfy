@@ -14,6 +14,7 @@
 //! | position | read as a path when |
 //! |---|---|
 //! | operand of `<<:` or `extends:` | it parses as a path at all |
+//! | item of an `!edge`'s `connections` | always: it is a reach or it is `E0213` |
 //! | anywhere else (a data edge) | it parses **and** was written `./…` or `../…` |
 //!
 //! The asymmetry is exact rather than a matter of taste. A scalar under `<<:`
@@ -43,6 +44,12 @@
 //! `service.member_one` elsewhere in the document will not find it: only a
 //! `!ref` establishes the capability that member access addresses through.
 //!
+//! A `connections` item is the third row because the position is declared by
+//! the language on a node the language tagged, which is as explicit a signal as
+//! `extends:` is and nothing like the incidental one D6.6 refuses. There is no
+//! prefix in that position, so quoting escapes nothing there and a quoted
+//! endpoint still names a node.
+//!
 //! In a base YAML file `!ref` is an unrecognised tag on a value and nothing
 //! else (D6.6), so pass 3 classifies it as [`TagKind::Other`] there and this
 //! pass never sees it.
@@ -55,6 +62,7 @@ use super::keys::is_extends_key;
 use super::path::{self, Failure, Path, Space};
 use super::table::Table;
 use super::Ctx;
+use crate::edge;
 use crate::tags::TagKind;
 
 /// Which operator a reference is an operand of.
@@ -65,6 +73,11 @@ pub enum RefRole {
     Inclusion,
     /// `extends:` — extension, or an extended reference when written `!ref`.
     Extension,
+    /// An item of an `!edge` node's `connections` sequence — an endpoint of
+    /// that edge (D4.13). A reach position by declaration, exactly as a clause
+    /// operand is, so a bare name is a path there and quoting escapes nothing:
+    /// there is no prefix in this position for a quote to escape.
+    Connection,
     /// Anywhere else — a data edge.
     Data,
 }
@@ -76,6 +89,7 @@ impl RefRole {
         match self {
             RefRole::Inclusion => "<<",
             RefRole::Extension => "extends",
+            RefRole::Connection => "connections",
             RefRole::Data => "data",
         }
     }
@@ -282,17 +296,22 @@ fn one(ctx: &Ctx, file: FileId, node: NodeId, document: u32) -> Option<Occurrenc
     let ast = ctx.ast(file)?;
     let capability = ctx.interned.tag_kind(file, node) == Some(TagKind::Ref);
     let scalar = ast.scalar(node)?;
-    if !capability && (scalar.style != ScalarStyle::Plain || ast.tag(node).is_some()) {
+    let plain = scalar.style == ScalarStyle::Plain && ast.tag(node).is_none();
+    let Site { role, binds, owner } = site(ctx, file, node)?;
+    // Two positions are reaches by declaration rather than by spelling: a
+    // `!ref`, and an item of an edge's `connections`. In both the scalar names
+    // a node whatever its style, and a scalar that is not a path at all is
+    // still an occurrence — it declared a reach and named nothing, and silence
+    // there would lose it.
+    let declared = capability || role == RefRole::Connection;
+    if !declared && !plain {
         return None;
     }
-    let Site { role, binds, owner } = site(ctx, file, node)?;
     let text: Box<str> = scalar.value.trim().into();
-    // An untagged scalar in a data position is data unless the path is anchored;
-    // a `!ref` that is not a path at all is still an occurrence, because it
-    // declared an intent and named nothing, and silence there would lose it.
+    // An untagged scalar in a data position is data unless the path is anchored.
     let path = match path::parse(&text) {
-        Some(path) if capability || role != RefRole::Data || path.anchored => Some(path),
-        _ if capability => None,
+        Some(path) if declared || role != RefRole::Data || path.anchored => Some(path),
+        _ if declared => None,
         _ => return None,
     };
     let span = ast.node(node).span;
@@ -329,8 +348,26 @@ fn site(ctx: &Ctx, file: FileId, node: NodeId) -> Option<Site> {
     if is_extends_key(ast, entry.key) {
         return Some(Site { role: RefRole::Extension, binds: None, owner });
     }
+    if !direct && is_connections_key(ctx, file, holder, entry.key) {
+        return Some(Site { role: RefRole::Connection, binds: None, owner });
+    }
     let binds = direct.then(|| ast.scalar(entry.key).map(|key| key.value.clone())).flatten();
     Some(Site { role: RefRole::Data, binds, owner })
+}
+
+/// Whether `key` names the `connections` member of an `!edge` node (D4.13).
+///
+/// Only the sequence form is a reach position, which is why the caller asks
+/// this for a sequence item alone: a `connections` that is not a sequence is
+/// the wrong shape for an edge and is reported once, as `E0224`, rather than
+/// twice as a shape fault and a failed path.
+fn is_connections_key(ctx: &Ctx, file: FileId, holder: NodeId, key: NodeId) -> bool {
+    edge::declares_connections(ctx.interned, file, holder)
+        && ctx
+            .interned
+            .key_of(file, key)
+            .and_then(|name| ctx.interned.symbols().resolve(name))
+            == Some(edge::CONNECTIONS)
 }
 
 /// The diagnostic a failed resolution earns. Every failure is `E0213` — the

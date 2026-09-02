@@ -1,0 +1,28 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::nary
+visibility: public
+--- !node &Ingress
+pub port: 443
+--- !node &Filter
+pub order: 1
+--- !node &Backend
+pub port: 8080
+# Three endpoints, one edge. A three-way relation is not three binary ones and
+# is never decomposed into them. The endpoints are written as **paths**, which
+# is what a `connections` item is: a reach, exactly as a clause operand is, so
+# a bare name resolves against this file and needs no anchor to cross the
+# document boundary an alias may not cross (D2.6).
+--- !edge &Route
+pub connections: [Ingress, Filter, Backend]
+# An edge is a node, so an edge may be an endpoint of another edge. That is how
+# a relation over relations is written, and it is intended.
+--- !edge &Supersedes
+pub connections: [Route, Backend]
+# `connections: []` is the degenerate edge: a relation with no endpoints yet.
+# It is a shape and not a mistake — an edge with no `connections` **member** is
+# the mistake, and that is `E0223`.
+--- !edge &Planned
+pub connections: []

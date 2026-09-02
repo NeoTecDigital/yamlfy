@@ -17,6 +17,8 @@
 //!   prefix and composed with its scope's (D4.12, D6.5);
 //! * **`E0220`, `E0221`, `W0301`** — every concrete node validated against its
 //!   abstract ancestors' *declared* views, never against its own flattened one;
+//! * **`E0223`, `E0224`, `E0225`** — what each `!edge` node relates, read off
+//!   its resolved view because `connections` may be inherited (D4.13);
 //! * **`W0303`** over a resolved base, which pass 4 could only test against the
 //!   base's own keys.
 //!
@@ -54,6 +56,7 @@
 mod ancestry;
 mod cycles;
 mod declare;
+pub mod edges;
 mod inert;
 mod names;
 mod reach;
@@ -72,12 +75,14 @@ use crate::intern::Interned;
 use crate::link::{Ctx, EdgeId, Linked};
 
 pub use ancestry::is_concrete;
+pub use edges::{Connection, EdgeNode, Edges};
 pub use view::{Acquisition, Field, FieldGate, View};
 
 /// Everything pass 5 resolved, and everything it found.
 pub struct Checked {
     diagnostics: Diagnostics,
     views: resolve::Views,
+    edges: Edges,
     dropped: HashSet<EdgeId>,
     cyclic: bool,
 }
@@ -115,6 +120,16 @@ impl Checked {
     #[must_use]
     pub fn declared(&self, file: FileId, node: NodeId) -> Option<&View> {
         self.views.declared((file, node))
+    }
+
+    /// Every `!edge` node the project writes, with the endpoints each one
+    /// relates and the handles naming them (D4.13).
+    ///
+    /// An edge is a node, so it also has a view, an ancestry and a scope like
+    /// any other; this is only the part no other node has.
+    #[must_use]
+    pub fn edges(&self) -> &Edges {
+        &self.edges
     }
 
     /// A node's literal keys, its inheritance clauses removed (D4.9).
@@ -175,13 +190,15 @@ pub fn check_with(
     reach::reach(&ctx, linked, &mut diagnostics);
     inert::inert(&ctx, linked, &views, &mut diagnostics);
     validate::validate(&ctx, linked, &views, &dropped, &order, &mut diagnostics);
+    let edges = edges::collect(&ctx, linked, &views, &order, &mut diagnostics);
     debug!(
         components = components.len(),
         dropped = dropped.len(),
         resolved = views.len(),
+        edges = edges.len(),
         "checked project"
     );
-    Checked { diagnostics, views, dropped, cyclic: cycles::any_cyclic(&components) }
+    Checked { diagnostics, views, edges, dropped, cyclic: cycles::any_cyclic(&components) }
 }
 
 /// Graph fixtures for the unit tests of [`scc`], built without a project so the

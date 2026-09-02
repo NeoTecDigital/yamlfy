@@ -1,0 +1,18 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: vis::open
+visibility: public
+--- !node &Alpha
+pub port: 1
+--- !node &Beta
+pub port: 2
+# `pub connections` — the endpoints are readable from anywhere.
+--- !edge &Shown
+pub connections: [Alpha, Beta]
+# A bare member is private and immutable (D4.12), so this edge's endpoints are
+# readable only from inside the scope that wrote them. The edge itself is
+# public and addressable; what it relates is not disclosed.
+--- !edge &Hidden
+connections: [Alpha, Beta]

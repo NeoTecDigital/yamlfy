@@ -87,27 +87,58 @@ pub enum ModelKind {
     Abstract,
     /// `!node` in a Yamlfication source file. Emitted.
     Concrete,
+    /// `!edge` in a Yamlfication source file. Emitted, and additionally the
+    /// **incidence** of the relation it declares: its `connections` are a run
+    /// of [`EdgeKind::Connection`] records leaving it (D4.13).
+    ///
+    /// A separate variant rather than a flag beside [`ModelKind::Concrete`],
+    /// because one field answering "what is this node" cannot disagree with
+    /// itself; and a variant of *this* enum rather than a second enum, because
+    /// an edge is a node and the abstract/concrete question is asked of it in
+    /// exactly the same words.
+    Edge,
 }
 
 impl ModelKind {
-    /// Whether this kind is emitted as a model.
+    /// Whether this kind is emitted as a model. An edge is: a relation nothing
+    /// holds is not a relation.
     #[must_use]
     pub fn is_concrete(self) -> bool {
-        self == ModelKind::Concrete
+        matches!(self, ModelKind::Concrete | ModelKind::Edge)
+    }
+
+    /// Whether this kind declares a relation of its own.
+    #[must_use]
+    pub fn is_edge(self) -> bool {
+        self == ModelKind::Edge
     }
 }
 
-/// What relationship an edge records.
+/// What relationship an edge record states.
 ///
 /// The first three are the language's three operators, and they mirror
-/// [`crate::link::EdgeKind`]. The fourth has no counterpart there and cannot
+/// [`crate::link::EdgeKind`]. The last two have no counterpart there and cannot
 /// have one: pass 4's graph is the *inheritance* graph, over which a cycle is
-/// an error, and a data edge is legally cyclic (spec §0). They meet only here.
+/// an error, and both a data edge and a connection are legally cyclic
+/// (spec §0). They meet only here.
 ///
 /// `!ref` is deliberately **not** a kind. It is a declaration of intent that is
-/// legal wherever a path is (D4.12), so it qualifies three of these four rather
-/// than standing beside them — which is [`Edge::capability`]. Making it a kind
-/// would say `<<: !ref P` is not an inclusion, and it is one.
+/// legal wherever a path is (D4.12), so it qualifies these rather than standing
+/// beside them — which is [`Edge::capability`]. Making it a kind would say
+/// `<<: !ref P` is not an inclusion, and it is one.
+///
+/// # There is one notion of "edge" here, and this is it
+///
+/// [`Edge`] is an **incidence record**: a labelled ordered pair the CSR index
+/// is built from. A `!edge` *node* is not a second one — it is a
+/// [`ModelId`] like any other node, and what it contributes to this index is a
+/// run of [`EdgeKind::Connection`] records, one per endpoint, all leaving the
+/// edge node itself. That is the standard incidence encoding of a hypergraph,
+/// and it is the encoding "an edge is a node" forces: an n-ary relation cannot
+/// be a pair, so the relation becomes a vertex and each endpoint becomes a
+/// pair. Traversal from one endpoint to another is therefore two hops through
+/// the edge node, which is what makes the edge's own members — its middleware —
+/// reachable on the way.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EdgeKind {
     /// `<<` — containment. A has a B in it, and is not a B.
@@ -120,6 +151,12 @@ pub enum EdgeKind {
     /// A value naming another node — `key: ../peer/Thing`, `key: *alias`.
     /// Carries no `is_a` claim and may lie on a cycle.
     Data,
+    /// One endpoint of an `!edge` node's `connections`, leaving that edge node
+    /// (D4.13). Not an [`EdgeKind::Data`] reference: a data edge says *this
+    /// member names that node*, and a connection says *this edge relates that
+    /// node*, so a query for what is connected to a node must not collect every
+    /// node that happens to point at it.
+    Connection,
 }
 
 impl EdgeKind {
@@ -131,6 +168,7 @@ impl EdgeKind {
             EdgeKind::Extension => "extends",
             EdgeKind::ExtendedReference => "extends !ref",
             EdgeKind::Data => "data",
+            EdgeKind::Connection => "connection",
         }
     }
 
@@ -156,8 +194,10 @@ pub struct Edge {
     /// Every edge carrying it has a dependency running the other way, and those
     /// are the ones an audit reads.
     pub capability: bool,
-    /// The member that carries a data edge, when one does. `None` for an
-    /// inheritance edge, whose site is the operator rather than a key.
+    /// The member that carries a data edge, when one does; for an
+    /// [`EdgeKind::Connection`] it is the **handle** `definition` gives that
+    /// endpoint, when it gives it one. `None` for an inheritance edge, whose
+    /// site is the operator rather than a key.
     pub key: Option<Symbol>,
     /// Where it is written.
     pub span: Span,
@@ -297,6 +337,14 @@ impl<'a> Image<'a> {
         (0..self.models.len()).filter_map(|at| {
             self.model(ModelId(u32::try_from(at).expect("image overflow")))
         })
+    }
+
+    /// Every `!edge` node the image holds, in source order (D4.13).
+    ///
+    /// An edge is a node, so each of these is also in [`Image::models`]; this
+    /// is the projection onto the ones that declare a relation.
+    pub fn edges(&self) -> impl Iterator<Item = ModelView<'_>> + '_ {
+        self.nodes().filter(|held| held.is_edge())
     }
 
     /// One node of the image.

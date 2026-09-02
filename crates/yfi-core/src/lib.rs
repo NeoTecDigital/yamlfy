@@ -65,6 +65,7 @@ mod walk;
 
 pub mod check;
 pub mod discover;
+pub mod edge;
 pub mod emit;
 pub mod header;
 pub mod image;
@@ -76,6 +77,7 @@ pub mod scope;
 pub mod symbol;
 pub mod tags;
 
+pub use edge::{CONNECTIONS, DEFINITION};
 pub use discover::{
     discover, discover_in, DiscoverOptions, FileClass, Project, ProjectFile,
     DEFAULT_DATA_EXTENSIONS, DEFAULT_SOURCE_EXTENSIONS,

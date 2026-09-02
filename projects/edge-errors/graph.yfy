@@ -1,0 +1,31 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::errors
+visibility: public
+--- !node &Alpha
+pub port: 1
+# `E0223` — an `!edge` with no `connections` relates nothing, and a tag that
+# means nothing is worse than one that does not exist.
+--- !edge &Bare
+pub weight: 1
+# `E0224` — `connections` must be a sequence of endpoints.
+--- !edge &NotASequence
+pub connections: 7
+# `E0224` — `definition` must be a mapping of handles.
+--- !edge &NotAMapping
+pub connections: [Alpha]
+pub definition: 1
+# `E0225` twice — one handle past the end of `connections`, one that is not an
+# index at all.
+--- !edge &BadHandles
+pub connections: [Alpha]
+pub definition:
+  source: 0
+  target: 3
+  other: nope
+# `E0213` — a connections item is a reach, so an item naming nothing is the
+# same failure a clause operand naming nothing is, with the same code.
+--- !edge &Nowhere
+pub connections: [Nothing]

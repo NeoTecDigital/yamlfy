@@ -21,6 +21,8 @@ use crate::link::SourceOrder;
 use crate::scope::ScopeId;
 use crate::symbol::Symbol;
 
+use crate::edge;
+
 use super::{Edge, EdgeKind, Image, Model, ModelId, ModelKind};
 
 /// One node of the image, with everything known about it.
@@ -53,10 +55,17 @@ impl<'a> ModelView<'a> {
         self.model().kind
     }
 
-    /// Whether the node is `!node` in Yamlfication source.
+    /// Whether the node is emitted — `!node` or `!edge` in Yamlfication source.
     #[must_use]
     pub fn is_concrete(self) -> bool {
         self.kind().is_concrete()
+    }
+
+    /// Whether the node is an `!edge`, and therefore declares a relation of its
+    /// own on top of everything every other node has (D4.13).
+    #[must_use]
+    pub fn is_edge(self) -> bool {
+        self.kind().is_edge()
     }
 
     /// Where the node is written.
@@ -171,6 +180,99 @@ impl<'a> ModelView<'a> {
     #[must_use]
     pub fn is_visible_from(self, observer: ScopeId) -> bool {
         self.image.is_visible_from(self.id, observer)
+    }
+
+    // ---------------------------------------------------------------- edges
+
+    /// The incidence records of this edge's endpoints, in written order
+    /// (D4.13). Empty for a node that is not an `!edge`.
+    ///
+    /// The position of a record in this run **is** the endpoint's index, which
+    /// is what a `definition` handle names, and it never renumbers.
+    pub fn connection_edges(self) -> impl Iterator<Item = &'a Edge> {
+        self.out().iter().filter(|held| held.kind == EdgeKind::Connection)
+    }
+
+    /// The nodes this edge relates, in written order. Empty for a node that is
+    /// not an `!edge`.
+    ///
+    /// An endpoint may itself be an edge: an edge is a node, so an edge over
+    /// edges is a legal and intended shape, and it is what composing relations
+    /// out of relations looks like. The connection graph may therefore cycle —
+    /// only *inheritance* cycles are illegal — so a traversal built on this
+    /// carries a visited set (spec §0).
+    pub fn connections(self) -> impl Iterator<Item = ModelView<'a>> {
+        let image = self.image;
+        self.connection_edges().filter_map(move |held| image.model(held.to))
+    }
+
+    /// The endpoint a `definition` handle names.
+    ///
+    /// Answered from the edge's handle list rather than by matching the edge
+    /// index's `key`, because handles are **many-to-one**: a self-loop names one
+    /// position twice (`from: 0`, `to: 0`) and an index record carries only the
+    /// first of those names. Reading the list answers both.
+    #[must_use]
+    pub fn connection(self, handle: Symbol) -> Option<ModelView<'a>> {
+        let held = self.image.checked.edges().get(self.place())?.connection(handle)?;
+        self.image.at(held.target.0, held.target.1)
+    }
+
+    /// The endpoints an observer in `observer` may see, in written order.
+    ///
+    /// Two gates, both already written and neither restated: the `connections`
+    /// **member** must be readable from there ([`FieldView::is_readable_from`],
+    /// pass 5's predicate), and the endpoint must be a node that observer can
+    /// see at all ([`ModelView::is_visible_from`], the scope-level gate). There
+    /// is no third predicate.
+    ///
+    /// Filtered as it walks, so an endpoint the observer may not see is absent
+    /// by **shape**. Its position is not reused: [`ModelView::connection`]
+    /// still answers by handle over the *written* positions, and a filtered
+    /// result never renumbers the endpoints beside the one it dropped.
+    ///
+    /// # Why both, when one implies the other in a clean project
+    ///
+    /// In a project that raised no `E0216`, **the member gate is the one that
+    /// bites and the node gate can never fire behind it.** `E0216` forbids an
+    /// edge from naming a target its own scope cannot see, so every closed
+    /// scope on an endpoint's path encloses the edge's scope; and the member
+    /// gate opens either because the observer sits inside the edge's scope —
+    /// in which case it sits inside every closed scope above it too — or
+    /// because the edge's scope is reachable from the root, in which case no
+    /// closed scope but the root is on the endpoint's path either. Both
+    /// branches make the endpoint visible.
+    ///
+    /// The node gate is kept for the case where that premise is *false*: a
+    /// project that raised `E0216` still emits (only a cycle refuses emission),
+    /// and a broken project must not become the way to read what a scope
+    /// declined to publish. `projects/edge-invisible-connection` is that case.
+    pub fn connections_readable_from(
+        self,
+        observer: ScopeId,
+    ) -> impl Iterator<Item = ModelView<'a>> {
+        let readable =
+            self.connections_field().is_some_and(|field| field.is_readable_from(observer));
+        self.connections().filter(move |held| readable && held.is_visible_from(observer))
+    }
+
+    /// The `!edge` nodes that name this node as an endpoint. O(degree).
+    ///
+    /// This is the reverse of [`ModelView::connections`] and the reason the
+    /// incidence encoding earns its keep: "what relates this node" is one
+    /// contiguous slice, whatever the arity of the relations involved.
+    pub fn incident_edges(self) -> impl Iterator<Item = ModelView<'a>> {
+        let image = self.image;
+        self.inc()
+            .iter()
+            .filter(|held| held.kind == EdgeKind::Connection)
+            .filter_map(move |held| image.model(held.from))
+    }
+
+    /// This node's `connections` member, as a member — which is what carries
+    /// the member-level half of the access question.
+    fn connections_field(self) -> Option<FieldView<'a>> {
+        self.field(self.image.interned.symbols().get(edge::CONNECTIONS)?)
     }
 }
 

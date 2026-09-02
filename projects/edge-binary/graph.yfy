@@ -1,0 +1,21 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::binary
+visibility: public
+---
+Client: !node &Client
+  pub host: localhost
+
+Service: !node &Service
+  pub port: 80
+
+# The ordinary case: an edge relating two nodes. It is a node itself — it has
+# an anchor, it is addressable, it is emitted — and `connections` is what makes
+# it an edge rather than an ordinary node with a sequence in it.
+Calls: !edge &Calls
+  pub connections: [*Client, *Service]
+  # Everything else on an edge is an ordinary member. An edge carrying members
+  # is middleware, and nothing had to be added to allow it.
+  pub protocol: https

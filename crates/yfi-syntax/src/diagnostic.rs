@@ -79,6 +79,17 @@ pub enum Code {
     AnchorShadowed,
     /// A reserved tag was written that the language does not implement.
     ReservedTag,
+    /// An `!edge` node holds no `connections` member, so the tag relates
+    /// nothing.
+    EdgeWithoutConnections,
+    /// An edge's `connections` is not a sequence, or its `definition` is not a
+    /// mapping.
+    EdgeMemberShape,
+    /// A `definition` handle names no connection of the edge that writes it,
+    /// or names one another handle has already named.
+    UnboundHandle,
+    /// An edge's `connections` is written somewhere that is not an `!edge`.
+    ConnectionsNotOnAnEdge,
     /// A merge key or an `extends` entry carries an operand the language does
     /// not accept as a source.
     IllegalMergeSource,
@@ -142,6 +153,10 @@ impl Code {
             Code::RequiredFieldUnsatisfied => "E0220",
             Code::DeclaredTagMismatch => "E0221",
             Code::ReservedTag => "E0222",
+            Code::EdgeWithoutConnections => "E0223",
+            Code::EdgeMemberShape => "E0224",
+            Code::UnboundHandle => "E0225",
+            Code::ConnectionsNotOnAnEdge => "E0226",
             Code::UndeclaredField => "W0301",
             Code::InertContribution => "W0303",
             Code::DuplicateNamespace => "E0230",
@@ -189,6 +204,10 @@ impl Code {
             Code::UndeclaredField,
             Code::InertContribution,
             Code::ReservedTag,
+            Code::EdgeWithoutConnections,
+            Code::EdgeMemberShape,
+            Code::UnboundHandle,
+            Code::ConnectionsNotOnAnEdge,
             Code::DuplicateNamespace,
             Code::BadHeaderValue,
             Code::UnresolvedImport,

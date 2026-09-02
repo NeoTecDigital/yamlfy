@@ -1,0 +1,17 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: inv::open
+visibility: public
+--- !node &Alpha
+pub port: 1
+# `E0216`. A connections item is a reach, so the epistemic gate stands in front
+# of it exactly as it stands in front of a clause operand: this edge may not
+# name what its own scope cannot see.
+#
+# The project still emits — only a *cycle* refuses emission — so the image is
+# asked the same question the compiler refused, and must give the same answer:
+# `connections_readable_from` discloses `Alpha` and not `Secret`.
+--- !edge &Reaches
+pub connections: [Alpha, ../shut/Secret]

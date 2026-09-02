@@ -34,17 +34,24 @@ use super::view::Place;
 
 /// Whether a node is emitted as a model, and therefore validated.
 ///
-/// `!node` in Yamlfication source, and nothing else. `!type` is abstract, an
-/// untagged node is abstract (D7.1), and a tag in a base YAML file classifies
-/// as [`TagKind::Other`] because the vocabulary is not interpreted there
-/// (D6.6) — so a `.yaml` emits no models of its own by the default arriving at
-/// the right answer, rather than by a rule of its own.
+/// `!node` and `!edge` in Yamlfication source, and nothing else. `!type` is
+/// abstract, an untagged node is abstract (D7.1), and a tag in a base YAML file
+/// classifies as [`TagKind::Other`] because the vocabulary is not interpreted
+/// there (D6.6) — so a `.yaml` emits no models of its own by the default
+/// arriving at the right answer, rather than by a rule of its own.
+///
+/// **`!edge` is concrete** (D4.13). An edge is a node, and an edge that is
+/// never emitted relates nothing: there would be nothing in the output holding
+/// the relation together. Its abstract counterpart is `!type`, exactly as
+/// `!node`'s is, and an edge family is a `!type` that declares `connections` —
+/// which needs no new rule, because D7.3's tagged-empty spelling already means
+/// *a descendant must supply one*.
 ///
 /// Published because pass 6 asks the same question and a second spelling of it
 /// would be a second rule.
 #[must_use]
 pub fn is_concrete(interned: &Interned, place: Place) -> bool {
-    interned.tag_kind(place.0, place.1) == Some(TagKind::Node)
+    matches!(interned.tag_kind(place.0, place.1), Some(TagKind::Node | TagKind::Edge))
 }
 
 /// Whether a node is inheritable-and-never-emitted, which is what makes its

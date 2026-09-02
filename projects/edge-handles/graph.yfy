@@ -1,0 +1,24 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::handles
+visibility: public
+--- !node &Team
+pub name: platform
+--- !node &Service
+pub port: 80
+# `definition` names positions in `connections`, so an endpoint is addressed by
+# a name instead of by an index.
+--- !edge &Owns
+pub connections: [Team, Service]
+pub definition:
+  owner: 0
+  owned: 1
+# Two handles may name one position: a self-loop is a legal relation and both
+# of its ends are the same node.
+--- !edge &DependsOn
+pub connections: [Service]
+pub definition:
+  from: 0
+  to: 0

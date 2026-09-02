@@ -14,7 +14,8 @@
 //! * each node's **ancestor chain**, because flattening destroys the `is_a`
 //!   axis and retaining it is the whole reason `extends` is not `<<`;
 //! * a **CSR edge index in both directions**, over the three operators, the
-//!   bare capability declaration and **data edges**;
+//!   bare capability declaration, **data edges** and the **connections** of
+//!   every `!edge` node (D4.13);
 //! * each node's **scope path**, so an access question needs no tree walk;
 //! * the **name index** a path query resolves against.
 //!
@@ -65,6 +66,7 @@ use yfi_syntax::{FileId, NodeId, Pos, Span};
 
 use crate::check::{self, Checked};
 use crate::discover::Project;
+use crate::edge;
 use crate::image::{Edge, EdgeKind, Flat, Image, Model, ModelId, ModelKind};
 use crate::intern::Interned;
 use crate::link::path::Space;
@@ -91,7 +93,7 @@ pub fn emit<'a>(
         debug!("emission refused: the inheritance graph held a cycle");
         return empty(project, interned, linked, checked, &ctx, true);
     }
-    let raw = raw_edges(&ctx, linked);
+    let raw = raw_edges(&ctx, linked, checked);
     let places = places(&ctx, checked, &raw);
     let index: HashMap<Place, u32> = places
         .iter()
@@ -203,10 +205,7 @@ fn models(ctx: &Ctx, places: &[Place]) -> Vec<Model> {
         .iter()
         .map(|place| Model {
             place: *place,
-            kind: match check::is_concrete(ctx.interned, *place) {
-                true => ModelKind::Concrete,
-                false => ModelKind::Abstract,
-            },
+            kind: kind_of(ctx, *place),
             scope: ctx
                 .interned
                 .scope_of(place.0, place.1)
@@ -216,6 +215,20 @@ fn models(ctx: &Ctx, places: &[Place]) -> Vec<Model> {
             order: order_of(ctx, *place),
         })
         .collect()
+}
+
+/// What a node is: an edge, some other concrete node, or abstract. The
+/// concrete/abstract question is [`check::is_concrete`]'s and is not restated;
+/// only the edge case is added, and it is a *refinement* of concrete rather
+/// than a third answer to the same question (D4.13, D7.1).
+fn kind_of(ctx: &Ctx, place: Place) -> ModelKind {
+    if edge::is_edge(ctx.interned, place.0, place.1) {
+        return ModelKind::Edge;
+    }
+    match check::is_concrete(ctx.interned, place) {
+        true => ModelKind::Concrete,
+        false => ModelKind::Abstract,
+    }
 }
 
 fn span_of(ctx: &Ctx, place: Place) -> Span {
@@ -243,11 +256,12 @@ struct RawEdge {
 /// a reverse dependency can never lie on a cycle; here the two directions are
 /// the two indexes, so decoding it back would only be a way of losing the
 /// operand's written form on the way through.
-fn raw_edges(ctx: &Ctx, linked: &Linked) -> Vec<RawEdge> {
+fn raw_edges(ctx: &Ctx, linked: &Linked, checked: &Checked) -> Vec<RawEdge> {
     let mut out = Vec::new();
     clause_edges(linked, &mut out);
+    connection_edges(checked, &mut out);
     reference_edges(ctx, linked, &mut out);
-    alias_edges(ctx, linked, &mut out);
+    alias_edges(ctx, linked, connection_items(checked), &mut out);
     for edge in &mut out {
         edge.order = order_of(ctx, edge.from);
     }
@@ -276,6 +290,48 @@ fn clause_edges(linked: &Linked, out: &mut Vec<RawEdge>) {
             });
         }
     }
+}
+
+/// The endpoints of every `!edge` node (D4.13).
+///
+/// One record per endpoint, all leaving the edge node — the incidence encoding
+/// an n-ary relation forces, and the one that keeps a `!edge` node addressable
+/// as a node while being traversable as a relation. The `key` carries the
+/// handle `definition` named that position with, so a handle is answered out of
+/// the same index rather than out of a second table.
+///
+/// Read from [`Checked::edges`], whose `connections` came from the **resolved**
+/// view: an edge extending an `!type`d edge family therefore has the family's
+/// endpoints, by nothing but what extension already means.
+fn connection_edges(checked: &Checked, out: &mut Vec<RawEdge>) {
+    for held in checked.edges().items() {
+        for connection in &held.connections {
+            out.push(RawEdge {
+                from: held.place,
+                to: connection.target,
+                kind: EdgeKind::Connection,
+                capability: false,
+                key: connection.handle,
+                span: connection.span,
+                order: SourceOrder { file: 0, document: 0, byte: 0 },
+            });
+        }
+    }
+}
+
+/// Every item node an edge's `connections` is written from.
+///
+/// An alias standing there is already a [`EdgeKind::Connection`] record, so it
+/// is skipped by [`alias_edges`] rather than recorded a second time as data.
+/// A **path** there needs no such set: pass 4 gave it [`RefRole::Connection`],
+/// and only [`RefRole::Data`] is read as a data edge.
+fn connection_items(checked: &Checked) -> HashSet<Place> {
+    checked
+        .edges()
+        .items()
+        .iter()
+        .flat_map(|held| held.connections.iter().map(|connection| connection.item))
+        .collect()
 }
 
 /// The data edges a **path** writes: `key: ../peer/Thing`, and the same
@@ -307,7 +363,12 @@ fn reference_edges(ctx: &Ctx, linked: &Linked, out: &mut Vec<RawEdge>) {
 /// The data edges an **alias** writes. An alias standing as a clause operand is
 /// that clause's edge already, so it is skipped here rather than recorded twice
 /// under two kinds.
-fn alias_edges(ctx: &Ctx, linked: &Linked, out: &mut Vec<RawEdge>) {
+fn alias_edges(
+    ctx: &Ctx,
+    linked: &Linked,
+    connections: HashSet<Place>,
+    out: &mut Vec<RawEdge>,
+) {
     let operands: HashSet<Place> = linked
         .clauses()
         .iter()
@@ -316,7 +377,11 @@ fn alias_edges(ctx: &Ctx, linked: &Linked, out: &mut Vec<RawEdge>) {
     for file in ctx.project.files() {
         for position in 0..file.ast.nodes().len() {
             let node = NodeId(u32::try_from(position).expect("arena overflow"));
-            if operands.contains(&(file.id, node)) || file.ast.alias(node).is_none() {
+            let held = (file.id, node);
+            if operands.contains(&held) || connections.contains(&held) {
+                continue;
+            }
+            if file.ast.alias(node).is_none() {
                 continue;
             }
             let (Some(target), Some(from)) =
