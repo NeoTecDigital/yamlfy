@@ -1,0 +1,25 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# rustfmt is configured to describe the style the tree is already written in,
+# not to impose a new one. It is not run over the tree: `cargo fmt --check`
+# still reports a residual, and reformatting to close it would rewrite every
+# file at once and bury every real diff behind it. Adopt it, if at all, as one
+# isolated commit of its own.
+#
+# `max_width` is 100 because that is where the hand-written code wraps; 98, 102
+# and 104 each produce a strictly larger diff against it.
+max_width = 100
+
+# The single option that matters. rustfmt's defaults break a struct literal
+# past 18 characters and a function call past 60, which this tree does not do —
+# `ParseOptions { severities: SeverityMap::new(), max_recovery_attempts: 16 }`
+# is one line here. "Max" sets every width heuristic to `max_width`, which is
+# the rule the code was actually written to, and alone accounts for seven
+# eighths of the difference: without it the diff is 306 hunks, with it 39.
+use_small_heuristics = "Max"
+
+# Keep a short array of string literals packed rather than one element per
+# line. The default threshold of 10 characters splits lists such as the token
+# alphabet in `robustness.rs`, whose longest element is `"%YAML 1.2\n"`.
+short_array_element_width_threshold = 16

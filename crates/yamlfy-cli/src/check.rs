@@ -48,7 +48,7 @@ use std::process::ExitCode;
 
 use tracing::{debug, info};
 use yamlfy_config::Config;
-use yamlfy_core::{discover_in, DiscoverOptions, Project};
+use yamlfy_core::{discover_in, DiscoverOptions, FileClass, Project};
 use yamlfy_syntax::{parse_file, Diagnostics, FileId, Severity, SeverityMap, SourceMap};
 
 /// Check every path. Exit code is 0 when no error-level diagnostic was raised
@@ -168,7 +168,8 @@ impl Run {
     /// Read a path the project does not contain — one whose extension the
     /// project ignores, or one that cannot be read at all.
     fn loose(&mut self, path: &Path) {
-        let parsed = parse_file(&mut self.sources, path, &self.options.parse);
+        let dialect = self.options.class_of(path).unwrap_or(FileClass::Data).dialect();
+        let parsed = parse_file(&mut self.sources, path, &self.options.parse, dialect);
         info!(path = %path.display(), nodes = parsed.ast.nodes().len(), "parsed outside a project");
         let text = parsed.diagnostics.render(&self.sources);
         let _ = write!(self.out, "{text}");

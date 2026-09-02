@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: fam
+---
+Service: !type &Service
+  port: !!int 80
+Api: !node &Api
+  extends: *Service
+  prot: 8080

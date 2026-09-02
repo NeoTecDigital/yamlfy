@@ -6,7 +6,7 @@
 //! Three things the front end deliberately does not provide, built here as side
 //! tables keyed by `(FileId, NodeId)` so the read-only [`Ast`] stays read-only:
 //!
-//! * a **symbol table** over every mapping key, tag suffix and namespace
+//! * a **symbol table** over every member name, tag suffix and namespace
 //!   component,
 //! * a **node → document** map and a **node → parent** map, neither of which
 //!   exists today,
@@ -23,6 +23,7 @@ use tracing::debug;
 use yamlfy_syntax::{Ast, FileId, NodeId};
 
 use crate::discover::{FileClass, Project};
+use crate::member::{self, MemberFlags};
 use crate::order::NodeOrder;
 use crate::scope::ScopeId;
 use crate::symbol::{Symbol, SymbolTable};
@@ -48,8 +49,23 @@ pub struct FileIndex {
     parent_of: Vec<Option<NodeId>>,
     /// Classified tag and interned suffix per node.
     tag_of: Vec<Option<(TagKind, Symbol)>>,
-    /// Interned text per node used as a scalar mapping key.
-    key_of: Vec<Option<Symbol>>,
+    /// The member each node names, for the nodes that name one.
+    member_of: Vec<Option<Member>>,
+}
+
+/// A node that names a member of the collection holding it: a mapping key, or
+/// an item of a sequence written as a member list.
+///
+/// The name is **interned after the flags are taken off it**, so every later
+/// pass — key lookup, `E0218`'s member addressing, `W0301`, `E0220` — sees the
+/// member's name and never the prefix. Only a plain, untagged scalar in a
+/// Yamlfication source file is read this way (D4.2's escape, one level down).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Member {
+    /// The interned name, prefix removed.
+    pub name: Symbol,
+    /// What the member declared about itself.
+    pub flags: MemberFlags,
 }
 
 impl FileIndex {
@@ -137,10 +153,16 @@ impl Interned {
         self.index(file)?.tag_of.get(node.index()).copied().flatten().map(|(_, symbol)| symbol)
     }
 
-    /// The interned text of a node used as a scalar mapping key.
+    /// The interned name of a node that names a member.
     #[must_use]
     pub fn key_of(&self, file: FileId, node: NodeId) -> Option<Symbol> {
-        self.index(file)?.key_of.get(node.index()).copied().flatten()
+        Some(self.member_of(file, node)?.name)
+    }
+
+    /// The member a node names, name and declared flags together.
+    #[must_use]
+    pub fn member_of(&self, file: FileId, node: NodeId) -> Option<Member> {
+        self.index(file)?.member_of.get(node.index()).copied().flatten()
     }
 
     /// The scope a node resolves to. Phase 1 has no sub-file scoping, so every
@@ -153,7 +175,7 @@ impl Interned {
 
     /// A node's resolved scope path, `root → scope`. This is what visibility
     /// and mutability compose over; evaluating either axis on the last element
-    /// alone would make an enclosing `private` or `readonly` scope mean nothing.
+    /// alone would make an enclosing `private` or `immutable` scope mean nothing.
     #[must_use]
     pub fn scope_path_of(&self, file: FileId, node: NodeId) -> Option<&[ScopeId]> {
         let index = self.index(file)?;
@@ -215,11 +237,19 @@ fn index_file(
         document_of: document_map(ast),
         parent_of: vec![None; count],
         tag_of: vec![None; count],
-        key_of: vec![None; count],
+        member_of: vec![None; count],
     };
+    // A header declares the file's own axes, not a family's members (D6.4), so
+    // its `imports:` entries are file names rather than member declarations.
+    let header = file
+        .header
+        .as_ref()
+        .and_then(|held| index.document_of.get(held.node.index()).copied().flatten());
     for position in 0..count {
         let id = NodeId(u32::try_from(position).expect("arena overflow"));
-        link_children(ast, id, &mut index, symbols);
+        let declares = header.is_none()
+            || index.document_of.get(position).copied().flatten() != header;
+        link_children(ast, id, &mut index, symbols, declares);
         if let Some(tag) = ast.tag(id) {
             index.tag_of[position] = Some((kind_in(file.class, tag), symbols.intern(&tag.suffix)));
         }
@@ -235,28 +265,91 @@ fn kind_in(class: FileClass, tag: &yamlfy_syntax::Tag) -> TagKind {
     }
 }
 
-/// Record `id` as the parent of each of its children, and intern every scalar
-/// key it holds. Children always have a lower index than `id`, so one forward
+/// Record `id` as the parent of each of its children, and read every member
+/// name it holds. Children always have a lower index than `id`, so one forward
 /// scan assigns every parent exactly once.
-fn link_children(ast: &Ast, id: NodeId, index: &mut FileIndex, symbols: &mut SymbolTable) {
+///
+/// `declares` is false inside the header document, whose sequences are lists of
+/// file names rather than member lists. Its *keys* are interned like any
+/// other's: `imports` is a key wherever it is written, and only what a sequence
+/// item means changes.
+fn link_children(
+    ast: &Ast,
+    id: NodeId,
+    index: &mut FileIndex,
+    symbols: &mut SymbolTable,
+    declares: bool,
+) {
     if let Some(items) = ast.items(id) {
+        let mut found: Vec<(usize, Member)> = Vec::new();
         for item in items {
             index.parent_of[item.index()] = Some(id);
+            // A sequence item names a member only in Yamlfication source: a
+            // base YAML sequence is data and declares nothing (D6.6).
+            if declares && index.class == FileClass::Source {
+                if let Some(member) = read_item(ast, *item, symbols) {
+                    found.push((item.index(), member));
+                }
+            }
+        }
+        for (position, member) in found {
+            index.member_of[position] = Some(member);
         }
         return;
     }
     let Some(entries) = ast.entries(id) else { return };
-    let mut keys: Vec<(usize, Symbol)> = Vec::new();
+    let mut found: Vec<(usize, Member)> = Vec::new();
     for entry in entries {
         index.parent_of[entry.key.index()] = Some(id);
         index.parent_of[entry.value.index()] = Some(id);
-        if let Some(scalar) = ast.scalar(entry.key) {
-            keys.push((entry.key.index(), symbols.intern(&scalar.value)));
+        if let Some(member) = read_key(ast, entry.key, index.class, symbols) {
+            found.push((entry.key.index(), member));
         }
     }
-    for (position, symbol) in keys {
-        index.key_of[position] = Some(symbol);
+    for (position, member) in found {
+        index.member_of[position] = Some(member);
     }
+}
+
+/// Read a mapping key as a member name, taking its flags off it.
+///
+/// The prefix is read only from a **plain, untagged** scalar in a source file.
+/// Quoting or tagging the name is therefore the escape, which is the mechanism
+/// D4.2 already gives for `extends` and D1.1 for `<<`, rather than a new one.
+fn read_key(
+    ast: &Ast,
+    node: NodeId,
+    class: FileClass,
+    symbols: &mut SymbolTable,
+) -> Option<Member> {
+    let scalar = ast.scalar(node)?;
+    let Some(text) = flagged(ast, node, class) else {
+        return Some(Member { name: symbols.intern(&scalar.value), flags: MemberFlags::default() });
+    };
+    let (flags, name) = member::split(text);
+    Some(Member { name: symbols.intern(name), flags })
+}
+
+/// Read a sequence item as a member declaration, or `None` when it is data.
+///
+/// Only a plain, untagged scalar declares a member. A quoted, tagged or
+/// collection item is a value of the sequence and names nothing — which is what
+/// keeps an ordinary list of strings in a `.yfy` from being read as a member
+/// list on the strength of an incidental signal (D6.6).
+fn read_item(ast: &Ast, node: NodeId, symbols: &mut SymbolTable) -> Option<Member> {
+    let text = flagged(ast, node, FileClass::Source)?;
+    let (flags, name) = member::split(text);
+    Some(Member { name: symbols.intern(name), flags })
+}
+
+/// The text of `node` when it is a plain, untagged scalar of a source file —
+/// the one position a flag prefix is read from.
+fn flagged(ast: &Ast, node: NodeId, class: FileClass) -> Option<&str> {
+    let scalar = ast.scalar(node)?;
+    let plain = class == FileClass::Source
+        && scalar.style == yamlfy_syntax::ScalarStyle::Plain
+        && ast.tag(node).is_none();
+    plain.then_some(&*scalar.value)
 }
 
 /// Map every node to its document.

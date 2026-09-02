@@ -3,19 +3,41 @@
 
 # Yamlfication — Semantic Decisions
 
-**Status:** normative for Phase 1. **Applies to:** `yamlfy-syntax` (implemented) and
+**Status:** normative for Phase 1. **Applies to:** the front end (implemented) and
 the `discover` / `link` / `check` passes (specified here, implemented in Phase 1
-steps 3–4).
+steps 3–5).
 
-YAML 1.2 defines a serialisation. It does not define what a *graph database* should
-do with merge keys under cycles, with anchors redefined mid-document, or with
-positions in a stream that has already been tokenised. Those three gaps block the
-`link` pass, so they are settled here, fixture first — §§1–3. YAML defines nothing at
-all about nominal inheritance, projects, scope axes or declarations, which are this
-system's own and are settled in §§6–9.
+Yamlfication is a graph database whose source language is **yfi**, written in `.yfy`
+files and compiled by **`yamlfy`**. §11 states the language as a whole; this preamble
+states only what kind of thing it is, because that decides how the rest is read.
 
-Every decision below is backed by a file under `fixtures/`. The fixture is the
-specification; this document explains it.
+**yfi is its own language, and `.yfy` is not YAML.** It began as one — the core of the
+syntax is still a YAML superset, and §§1–3 govern that core in full — but a `.yfy` now
+holds three constructs a YAML parser rejects outright: the `//` line comment, the
+`<?-- … --!>` documentation block and the `<?-- … -->` code block (§10). They are
+scanner errors, not extensions, which is why `.yfy` has a front end of its own and why
+the file extension is a semantic declaration rather than a habit.
+
+**`.yaml` and `.yml` are base YAML: the data the engine operates over, not the language
+it compiles.** Nothing in §§6–11 is interpreted there — `extends:` is a field, `!node`
+is a tag nobody reads, there is no header and there are no member flags — and that
+separation is the subject of D6.6. The one thing the two classes share is what YAML
+itself defines, which is exactly the scope of §§1–3.
+
+So this document has two halves, and they answer different questions.
+
+* **§§1–3 — what YAML leaves open.** A serialisation format does not define what a
+  *graph database* should do with merge keys under cycles, with anchors redefined
+  mid-document, or with positions in a stream that has already been tokenised. Those
+  three gaps block the `link` pass, so they are settled here, fixture first. They hold
+  for **both** file classes, because both are read by one parser over one event stream.
+* **§§4–11 — what YAML says nothing about.** Diagnostics, the three inheritance
+  operators, paths, the scope axes, projects, declarations, member flags and the `.yfy`
+  front end are this system's own. They hold for `.yfy` alone.
+
+Every decision below is backed by a file under `fixtures/` (one file, parsed alone) or
+`projects/` (one directory, compiled as a project). The fixture is the specification;
+this document explains it.
 
 ---
 
@@ -186,7 +208,7 @@ fires only when the cycle is *observable* would require enumerating iteration or
 and would make a document's legality depend on which values happened to collide.
 
 **Recovery.** So that `E0212` does not cascade into a wall of unrelated errors, the
-link pass makes the merge graph acyclic by depth-first search in document order and
+check pass makes the merge graph acyclic by depth-first search in document order and
 **drops each back edge** — the merge edge whose target is already on the DFS stack.
 Every node then has a defined resolved view and later passes can report their own
 findings. This recovery value is **not** a language semantic and is never emitted:
@@ -454,30 +476,60 @@ parsed and kept.
 | `E0101` | error | source is not valid UTF-8 | parse |
 | `E0102` | error | source cannot be read | parse |
 | `E0103` | error | recovery budget exhausted | parse |
+| `E0104` | error | unterminated `<?--` block (D8.4) | parse |
 | `E0110` | error | duplicate mapping key | parse |
+| `E0110` | error | two keys naming one member (D8.5) | link |
 | `E0120` | error | anchor name unrecoverable (D3.5) | parse |
 | `E0121` | error | anchor recovery out of order (D3.5) | parse |
 | `E0130` | error | alias crosses a document boundary (D2.6) | parse |
 | `E0210` | error | more than one merge key (D1.7) | parse |
 | `W0300` | warning | anchor enters a new state (D2.3, reframed by D5.3) | parse |
-| `E0211` | error | illegal merge source (D1.6) | link — Phase 1 step 4 |
-| `E0212` | error | cyclic inheritance (D1.8, D4.10) | link — Phase 1 step 4 |
-| `E0213` | error | unresolved `!ref` (D4.3, D4.11) | link — Phase 1 step 4 |
-| `E0214` | error | conflicting extended references (D4.11) | link — Phase 1 step 4 |
+| `E0211` | error | illegal merge source (D1.6) | link |
+| `E0212` | error | cyclic inheritance (D1.8, D4.10) | check |
+| `E0213` | error | path names nothing (D4.3, D4.12) | link |
+| `E0214` | error | conflicting extended references (D4.11) | link |
+| `E0215` | — | **retired.** `!ref` into a file this file does not import | — |
+| `E0216` | error | path into a scope this scope cannot see (D4.12) | check |
+| `E0217` | error | `!ref` into a scope this scope may not write (D4.12, D6.5) | check |
+| `E0218` | error | path addresses a member its target does not hold (D4.12) | link |
 | `E0220` | error | required field unsatisfied (D7.3) | check |
 | `E0221` | error | declared-tag mismatch (D7.3, D4.8) | check |
 | `E0222` | error | `!oneof` is reserved, not implemented (D7.4) | discover |
 | `W0301` | warning | undeclared field on a concrete node (D7.3) | check |
-| `W0303` | warning | inert extended-reference contribution (D4.11) | link — Phase 1 step 4 |
+| `W0303` | warning | inert extended-reference contribution (D4.11) | link, check |
 | `E0230` | error | conflicting scope declarations (D6.1) | discover |
-| `E0230` | error | duplicate *definition* in a namespace (D6.1) | link — Phase 1 step 4 |
+| `E0230` | error | duplicate *definition* in a namespace (D6.1) | link |
 | `E0231` | error | bad header axis value (D6.4) | discover |
 | `E0240` | error | unresolved import (D6.7) | discover |
 | `E0241` | error | import target not visible (D6.7, D6.5) | discover |
 
-Everything from `E0211` down is specified here but **not** implemented in
-`yamlfy-syntax`. `E0211`–`E0214` and `W0303` need resolved aliases and refs, which is
-the link pass's job; `E0220`–`W0301` need declared views, which is `check`'s.
+Nothing from `E0211` down is implemented in `yamlfy-syntax`; each needs more than one
+file. `E0211`, `E0213`, `E0214`, `E0218` and `E0230`'s duplicate-definition condition are
+**raised by `link`** (pass 4), which walks every path against the project's scope tree
+and builds the inheritance graph. **`E0212` is raised by `check`** (pass 5), which runs
+SCC over that graph; `E0216`, `E0217` and `E0220`–`W0301` are `check`'s too, the first
+two because a reach is *permitted* against the scope tree and the rest because they
+need declared views.
+
+**`E0213` and `E0218` are two codes because the fixes are opposite.** `E0213` says the
+walk did not land — no such directory, no such peer, no such definition, or a `..` past
+the root — and the author's next move is the path. `E0218` says the walk landed and the
+`.` step did not, and the author's next move is the member name. One code would make the
+commonest question about a reach — *did I get the address wrong, or the field?* — the
+one thing the diagnostic did not answer.
+
+**`E0215` is retired, not renumbered.** It fired when a `!ref` addressed a file the
+referencing file had not imported, and D4.12 no longer has that rule: the path *is* the
+reach, so there is nothing left to be out of step with. The number is burned rather than
+reused, because a project pinning `--deny E0215` in configuration should get a clean
+"unknown code" rather than a silent redirection to an unrelated rule.
+
+**`W0303` is raised by both passes over disjoint inputs**, because D4.5's additivity
+rule spans two things only one pass can see. `link` reports a contributed key the base
+**writes directly**, which is decidable with nothing resolved and is the common case;
+`check` reports one the base holds only **through its own `<<` or `extends` chain**,
+which needs a resolved base. The sets do not overlap, so no contribution is warned about
+twice.
 `E0222`, `E0231`, `E0240` and `E0241` need only a file class or a project
 tree, both of which `discover` holds, and are raised there in `yamlfy-core` — `E0241`
 alongside `E0240`, in import resolution, because the scope tree is final by then and
@@ -488,19 +540,18 @@ be folded into `E0212` if that ever changes. `E0212`'s message text changes with
 inheritance**, not cyclic merge, because a user whose file contains no `<<` at all
 should not be told their merge is cyclic.
 
-**`E0230` is one code over two conditions, and only one of them is implemented.**
-`discover` raises it for the two *declaration* conflicts it can decide from headers and
-directories alone: files in one directory disagreeing about an axis, and one namespace
-claimed by two directories (D6.1). The **duplicate definition** — one namespace, one
-name, two files — is **owed by the link pass**, for the same reason `E0213` is: it is
-detected when the canonical-path table is built, and building that table is what
-resolving a `!ref` means. It cannot be answered earlier without first deciding *which*
-anchors carry a canonical path, and no decision here has made that one — D7.1 already
-holds that an anchored node nested inside another (`&line-a` in an invoice's `lines:`)
-is not a model of its own, so grouping every `&name` in a namespace would report a
-duplicate against two nodes that are not addressable at all, which is exactly the false
-positive D6.1's own errata warns against. Until link raises it, two files declaring one
-canonical path are accepted silently, and that is a gap rather than a decision.
+**`E0230` is one code over three conditions, raised by two passes.** `discover` raises
+it for the two *declaration* conflicts it can decide from headers and directories alone:
+files in one directory disagreeing about an axis, and one namespace claimed by two
+directories (D6.1). The **duplicate definition** — one namespace, one name, two files —
+is raised by `link`, for the same reason `E0213` is: it is detected when the definition
+table is built, and building that table is what resolving a path means. It could not be
+answered earlier without first deciding *which* anchors are addressable, and that
+decision is now made: **an anchored node that can be a parent scope — a collection — is
+addressable; an anchored scalar is a value, not a type, and is addressable by nothing.**
+Being addressable is not the same as being a model, so
+D7.1 is untouched: `&line-a` in an invoice's `lines:` is referenceable without being
+emitted as a model of its own.
 
 **Why `W0301` is a warning and not an error.** An undeclared field on a concrete node
 is how a field-name typo presents. `prot: 8080` next to an ancestor declaring
@@ -517,6 +568,14 @@ ancestor; a concrete node with no ancestry declares its own shape and cannot dev
 from it. What counts as declared includes anything an extended reference has installed
 on an ancestor, so the verdict is project-wide and can be changed by another file —
 see D4.11, which is where that cost is argued.
+
+**`E0110` is one code over two conditions, raised by two passes.** `parse` compares
+keys by their **text**, which is the right rule there and the only one available: the
+parser does not know the file's class and cannot know which text is a member flag and
+which is a name. `link` does, so it raises the same code for two keys whose texts
+differ and whose **member names** do not — `port:` beside `pub port:` (D8.5). One code
+because it is one fault with one fix, in two places because only the second pass can
+see the second spelling of it.
 
 **Duplicate key identity.** Merge keys and ordinary keys are counted separately,
 because D1.7 bounds merge keys by *role* while D1.1 identifies ordinary keys by
@@ -546,27 +605,35 @@ Fixture: `fixtures/malformed/duplicate-key.yml`.
 
 Recorded, not decided. Each needs an explicit answer before the pass that depends on it.
 
-* ~~**File extension.**~~ **Superseded by D6.6: both, and they mean different
-  things.** `.yfy` is Yamlfication source; `.yaml`/`.yml` is base YAML the engine
-  compiles or runs over. The earlier answer here — that `.yfy` is unnecessary because
-  everything is native YAML with zero custom lexing — was **right on its own axis and
-  answering the wrong question.** It treated the extension as a *syntax* decision, and
-  the revisit trigger it recorded (the first construct a YAML parser would reject) has
-  not fired and may never fire; the event-level foundation of §§1–3 still applies to
-  both classes. What forced the split is *semantics*: the same bytes need two readings,
-  because `extends:` must be an operation in one class and an ordinary field in the
-  other, and no signal inside the file decides that without guessing. `discover` still
-  filters by a configurable extension list, so the spellings are configuration; what is
-  normative is that there are **two classes with different readings**.
+* ~~**File extension.**~~ **Answered twice, on both of its axes.** `.yfy` is yfi
+  source; `.yaml`/`.yml` is base YAML the engine compiles or runs over.
+  * On the **semantic** axis, D6.6: the same bytes need two readings, because
+    `extends:` must be an operation in one class and an ordinary field in the other,
+    and no signal inside the file decides that without guessing.
+  * On the **syntax** axis, §10: **the trigger has fired.** This item recorded one —
+    "the first construct a YAML parser would reject" — alongside the claim that it
+    "has not fired and may never fire". It fired on `// comment`, `<?-- … --!>` and
+    `<?-- … -->`, each of which is a `ScannerError` in a real YAML parser, verified
+    against one rather than reasoned about. The earlier answer, that `.yfy` was
+    unnecessary because everything was native YAML with zero custom lexing, is now
+    **false in its premise as well as answering the wrong question**: there is custom
+    lexing, it is `.yfy`-only, and it is specified in §10.
+  * What did **not** change is the event-level foundation. §§1–3 still hold for both
+    classes, because the pre-pass is a character-for-character substitution that hands
+    the parser a text of the same length with the same line breaks (D8.4), so the two
+    classes still meet one parser over one span model.
+  `discover` still filters by a configurable extension list, so the spellings are
+  configuration; what is normative is that there are **two classes with different
+  readings**, and that only one of them is a language.
 * **Which GNU licence.** The project ships GPL-3.0-or-later. That choice has a
   consequence the plan's Phase 3 will run into: a Go server layer over a C ABI into
   this core is a combined work under the GPL, so the server must be GPL too. If the
   core is meant to be embeddable in closed software, that wants **LGPL-3.0**; if it is
   meant to stay copyleft across a network service, that wants **AGPL-3.0**.
   **Needs your answer before Phase 3, not before Phase 1.**
-* ~~**Does `!ref` participate in merge?**~~ **Answered: yes.** D2.6 confines `<<` to
-  one document *by operand*, not by operator: `<<: *alias` stays document-local and
-  `<<: !ref ns::path` crosses files. D1.6 gains `!ref` as a legal merge source, and
+* ~~**Does `!ref` participate in merge?**~~ **Answered: yes, and then superseded by
+  the path amendment.** D2.6 confines `<<` to one document *by operand*, not by
+  operator: `<<: *alias` stays document-local and `<<: ../peer/Base` crosses files. D1.6 gains `!ref` as a legal merge source, and
   **D1.8's cycle rule spans files** — one inheritance graph, one cycle rule, so a
   cycle formed half by `<<` and half by `!ref` is still `E0212`. This requires a
   normative total file order (canonicalized-path lexicographic); without one,
@@ -599,6 +666,15 @@ Recorded, not decided. Each needs an explicit answer before the pass that depend
   reasonable. **Adopt only if cross-file diamonds appear in practice.**
   `fixtures/cycles/merge-diamond.yml` is consistent and would not fire; no fixture
   poses the inconsistent case.
+* ~~**Nothing checks visibility on a `!ref`.**~~ **Answered: D4.12.** An import
+  reaching a private scope was `E0241`, but a reach into one resolved silently, so the
+  whole visibility system could be bypassed by spelling a reach `!ref` instead of an
+  import. A path now reaches only a **visible** target (`E0216`), a `!ref` reaches only
+  a **writable** one (`E0217`), and access to a member is a relation between the
+  accessor and the holder rather than a flag on the node. **Written up as D4.12.** The
+  import requirement that first answered this — `E0215` — was retired when the path
+  became the reach; it was the right instinct wearing the wrong mechanism, because it
+  asked a *declaration* to guard something a *syntax* can guard.
 * **A merge tag on a non-scalar key has no diagnostic.** D1.1 says a merge key is a
   *scalar* tagged `!!merge`, so `!!merge [k]: 1` is correctly not a merge key — but
   it then becomes an ordinary non-scalar key, which duplicate detection also skips,
@@ -615,31 +691,37 @@ are three questions, so there are three operations, and the language names them:
 
 | written | name | meaning | what it changes besides A |
 |---|---|---|---|
-| `A` with `<<: B` | **inclusion** | A has B as one of its members. A makes no claim about what B is anywhere else. | nothing |
-| `A` with `extends: B` | **extension** | A is a type of B, within the context of the parameter. | nothing |
-| `A` with `extends: !ref B` | **extended reference** | A is a direct extension of B *itself*: **B depends on A**, and every B in the program carries A's definition. | every B |
+| `A` with `<<: P` | **inclusion** | A has P as one of its members. A makes no claim about what P is anywhere else. | nothing |
+| `A` with `extends: P` | **extension** | A is a type of P, within the context of the parameter. | nothing |
+| `A` with `extends: !ref P` | **extended reference** | A is a direct extension of P *itself*: **P depends on A**, and every P in the program carries A's definition. | every P |
+
+`P` is a **path** (D4.12) — `../shared/Service`, `peer/Service`, `Service`,
+`Service.port`. It may also be an alias or an inline mapping in the first two rows;
+what it may never be is absent, because naming is how reaching happens.
 
 Read the right-hand column first. **Two of the three are safe and one changes the
 world.** Inclusion and extension both leave their operand exactly as it was; only the
 extended reference reaches back into the base. Everything else in this section is a
 consequence of that asymmetry.
 
-**The operand selects the operation.** `extends: *base` and
-`extends: !ref ns::base` may name the *same node* and are not the same operation.
-The natural guess — that `!ref` is merely "the linked version", the same inheritance
-reaching across a file boundary — is wrong, and it is wrong in the dangerous
-direction: the `!ref` form is the global one. This is stated first because it is the
-one misreading that produces a silently wrong graph across an entire project.
+**The tag selects the operation, and the path only says where.** `extends: P` and
+`extends: !ref P` name the **same node** and are not the same operation. The natural
+guess — that `!ref` is "the linked version", the same inheritance reaching across a
+file boundary — is wrong, and it is wrong in the dangerous direction: the path already
+crosses the boundary, so what `!ref` adds is not reach but **intent**. `!ref` is a
+declaration that this context intends to *modify* the target, and it is checked as one
+(`E0217`). This is stated first because it is the one misreading that produces a
+silently wrong graph across an entire project.
 
 **The operator set is closed at exactly these three.** There is no fourth operator and
 none will be added — no `!use`, no `!from`, no `A extends B from C`. This is a
 specification of the language, not a description of what happens to be implemented, so
 a later reader finding a case the three do not cover should not read that as a gap
 awaiting a fourth spelling. Every remaining question about reach — how a definition in
-another file becomes available at all — is answered by the **header import** (D6.7),
-which is a property of the *file*, not of the operators. Keeping the operator set
-closed is what makes the table above exhaustive and therefore learnable: three
-spellings, three blast radii, and nothing else to check.
+another file becomes available at all — is answered by the **path** (D4.12), which is a
+property of the *name*, not of the operators. Keeping the operator set closed is what
+makes the table above exhaustive and therefore learnable: three spellings, three blast
+radii, and nothing else to check.
 
 ### D4.1 — The three operations
 
@@ -654,7 +736,7 @@ inheritance. It is not. `A << B` says *A has a B in it*. It says nothing about w
 is outside of A, it creates no is-a relationship, and no query over the `is_a` axis
 will ever return A for B. A node that includes `water` is not a water.
 
-**Extension, `extends:` with an alias or an inline definition.** A is a type of B,
+**Extension, `extends:` with a path, an alias or an inline definition.** A is a type of B,
 **within the context of the parameter** — the claim holds where it is written and
 nowhere else. A appends B's definition to itself and retains the ancestry as a
 first-class, queryable `is_a` edge. B is untouched; no other node's resolved view
@@ -665,7 +747,7 @@ stating in the negative: an extension does **not** assert that A is a type of B
 globally, does not register A with B, and does not make B aware that A exists. It is
 a claim A makes about itself, in its own context.
 
-**Extended reference, `extends:` with a `!ref`.** A is a direct extension of B itself.
+**Extended reference, `extends:` with `!ref` on a path.** A is a direct extension of B itself.
 **B depends on A.** Every node that is a B — the ones already written, the ones in
 other files, the ones being written right now by someone who has never read A — now
 carries A's definition. This is Swift's `extension` and Ruby's open class, not
@@ -675,10 +757,16 @@ subclassing. The blast radius is every B in the program.
 property after the fact without editing the file that defines the family — which, in a
 graph a whole organisation writes into, is often the only available move. It is
 powerful for the same reason it is dangerous, and the design's answer is not to remove
-it but to make it **look different from the safe operation at the point of writing**.
+it but to make it **look different from the safe operation at the point of writing**
+and to make the base **agree in advance**. Since the path amendment the extended
+reference is also *gated*: it is a write, so the base's scope must be `mutable` from
+here or the operation is `E0217`. An organisation that does not want its families
+reopened does not have to police reviews for a tag; it says nothing, because
+`immutable` is the default (D6.4).
 
-*No fixture yet.* Every case in this section owes one; `fixtures/merge/` covers
-inclusion only.
+*Fixtures:* `projects/link-inert-contribution` and `projects/link-conflicting-extends`
+write the extended reference; `projects/check-ref-reach` writes the gate that now
+stands in front of it.
 
 ### D4.2 — What counts as an inheritance key
 
@@ -723,87 +811,157 @@ identified by *role* and therefore escapes text-based duplicate detection (§4,
 "Duplicate key identity"); `extends` does not. Multiple operands are written
 `extends: [*a, *b]`, exactly as D1.7's fix-it already directs for merge.
 
-### D4.3 — Inclusion is unchanged, and `!ref` under `<<` is not an extended reference
+### D4.3 — Inclusion is unchanged, and a path under `<<` is not an extended reference
 
-D1.6 gains one clause: a `!ref` resolving to a mapping is a legal merge source,
+D1.6 gains one clause: a **path** resolving to a mapping is a legal merge source,
 alongside a mapping and an alias, including as an element of the flat sequence form. A
-`!ref` that resolves to nothing is `E0213`; one that resolves to a non-mapping is
-`E0211`. This is what §5's answered open item promised, and it is the whole of the
-change to §1.
+path that resolves to nothing is `E0213`; one that lands and then misses a member is
+`E0218`; one that resolves to a non-mapping is `E0211`. This is what §5's answered open
+item promised, and it is the whole of the change to §1.
 
-`<<: !ref ns::path` is **cross-file inclusion**, and it is safe. It absorbs the
+`<<: ../peer/Base` is **cross-file inclusion**, and it is safe. It absorbs the
 referent's keys into A and changes nothing about the referent. Under `<<`, the operand
-carries only *scope* — `*alias` is document-local (D2.6, unchanged), `!ref` crosses
-files — exactly as D2.6 already established for data edges.
+carries only *scope* — `*alias` is document-local (D2.6, unchanged), a path walks the
+project — exactly as D2.6 already established for data edges.
 
-So `!ref` does not have one meaning. It is a cross-document reference whose effect is
-set by the operator it is an operand of:
+**The argument that the operand selects the operation still holds; what the operand
+ranges over has changed.** It used to be *alias versus `!ref`*, and that reading is now
+wrong in a way worth naming, because it made `!ref` mean two unrelated things at once —
+"this crosses a file" and "this reaches back into the base". Those came apart the moment
+a path could cross a file on its own. The operand is now *path versus `!ref`-path*:
 
 | written | operation | direction of dependency |
 |---|---|---|
 | `<<: *alias` | inclusion, document-local | A → B |
-| `<<: !ref B` | inclusion, cross-file | A → B |
+| `<<: P` | inclusion, anywhere in the project | A → B |
+| `<<: !ref P` | inclusion, **plus** the declaration that A intends to modify B | A → B **and B → A** |
 | `extends: *alias` | extension, document-local | A → B |
-| `extends: !ref B` | **extended reference** | A → B **and B → A** |
+| `extends: P` | extension, anywhere in the project | A → B |
+| `extends: !ref P` | **extended reference** | A → B **and B → A** |
+| `key: P` | data edge | A → B |
+| `key: !ref P` | data edge, **plus** the same declaration, bound to that key | A → B **and B → A** |
 
-The last row is the only one with an edge pointing back into the operand, and it is
-the row that has to be spotted while reading. This also discharges D2.6's closing
-clause, which said node-level inheritance via `<<` is confined to one document "unless
-`!ref` is later given merge semantics". It now has them. D2.6 itself is unchanged:
-`<<: *alias` reaching into another document is still `E0130`, because that is an
-illegal *alias*, not an illegal inclusion.
+Every row carrying `!ref` has an edge pointing back into the operand, and those are the
+rows that have to be spotted while reading. Only one of them — `extends: !ref P` —
+*contributes keys*; the others declare the dependency without installing anything, which
+is why `E0214` and `W0303` remain the extended reference's alone.
 
-### D4.4 — Extension is document-local; the import is what crosses files
+**`<<: !ref P` is a feature, and is meant to be written.** It is the one row of that
+table a reader is most likely to take for an accident of a uniform rule — inclusion plus
+a capability declaration, demanding write access to a base that inclusion does not
+modify — so this states plainly that it is intended and what it is for.
 
-An extension's operand is an alias or an inline mapping. Aliases do not cross a
-document boundary (D2.6), so **an extension is document-local by construction**, and
-that rule is not relaxed anywhere in this specification.
+It says two things at once, and they are two different things:
 
-It would appear to follow that "A is a type of B" is unsayable when B lives in another
-file, leaving only `extends: !ref B` — the operation that extends B for everybody — as
-the cross-file is-a spelling. It does not follow, and the reason is the one structural
-idea this design rests on:
+1. **include B's keys**, exactly as `<<: P` does, changing nothing about B;
+2. **register a capability over B** — this context depends on B and intends to modify
+   it — checked as one, so B's scope must be `mutable` from here or the line is
+   `E0217`.
 
-> **The file boundary is crossed by the import, not by the operation.**
+The pairing earns its place because *the site that composes something in is usually the
+site that goes on to change it*, and it is the honest place to say so. A file that
+includes `../core/Defaults` and later extends it by reference has a dependency on `core`
+from its first line; writing `<<: !ref ../core/Defaults` declares that dependency **where
+the composition happens**, answers the mutability gate at the top of the file rather than
+halfway down it, and gives an audit one line to read. The alternative — include silently,
+declare the intent somewhere else — splits one relationship across two places, which is
+the drift `!ref` exists to prevent.
 
-A header **imports** another file (D6.7). The import brings that file's definitions
-into *this* document, where they are ordinary anchors. An alias then reaches them
-because they are here — not because the alias learned to travel:
+**The apparent oddity is the point.** Demanding write access for an operation that
+performs no write is what keeps the *declaration* independent of the *installation*: an
+intent is a claim about this context, not a description of what one line happens to do,
+and D4.12 makes `!ref` legal wherever a path is precisely so that the claim can be made
+where it is true. A context that only ever reads B writes `<<: P` and needs nothing from
+B's header. That is the difference the two spellings carry, and it is one an author
+chooses rather than one the operator forces.
+
+*What it is not.* It contributes no keys to B (D4.5), so `E0214` and `W0303` have nothing
+to say about it, and it creates no `is_a` edge, because inclusion never does (D4.1). The
+blast radius of the inclusion is still exactly A. What crosses the boundary is the
+declaration and the reverse dependency edge, and nothing else.
+
+This also discharges D2.6's closing clause, which said node-level inheritance via `<<`
+is confined to one document "unless `!ref` is later given merge semantics". It has them,
+and then some: the *path* has them, and `!ref` is no longer what carries reach at all.
+D2.6 itself is unchanged: `<<: *alias` reaching into another document is still `E0130`,
+because that is an illegal *alias*, not an illegal inclusion.
+
+### D4.4 — Extension crosses files by path; the import is one way, not the only way
+
+An extension's operand is a **path**, an alias or an inline mapping. Aliases do not
+cross a document boundary (D2.6), so an *alias-operand* extension is document-local by
+construction, and that rule is not relaxed anywhere in this specification.
+
+It used to follow that "A is a type of B" was unsayable when B lived in another file
+unless B's file had been imported first, leaving the import as the sole boundary
+crossing. That is no longer the structure the design rests on. The structure now is:
+
+> **The path is the reach. Visibility permits it. `!ref` additionally requires
+> writability.**
+
+Two spellings therefore reach a definition in another file, and they are not
+alternatives so much as different questions:
 
 ```yaml
 --- !yamlfy/header
 namespace: acme::web
-import:
-  - core/service.yfy        # brings `&Service` into every document of this file
+imports:
+  - core/service.yfy        # brings `&Service` in as an ordinary anchor
 ---
 Frontend: !node
-  extends: *Service         # closed. Ordinary alias, ordinary extension.
+  extends: ../core/Service  # the path. No import needed; this line is the reach.
   port: !!int 8080
+
+Backend: !node
+  extends: *Service         # the alias. Ordinary anchor, because the import bound it.
+  port: !!int 9090
 ```
 
-`extends: *Service` here is the second operation with all of its properties intact:
-`Frontend` is a type of `Service`, an `is_a` edge is recorded, and **`Service` is
-untouched** — the file that defines it is not modified, and no other node that is a
-`Service` moves by a key. The blast radius is `Frontend`, exactly as D4.1 says, even
-though `Service` was written somewhere else entirely.
+Both are the second operation with all of its properties intact: each node is a type of
+`Service`, an `is_a` edge is recorded, and **`Service` is untouched** — the file that
+defines it is not modified, and no other node that is a `Service` moves by a key. The
+blast radius is the node that wrote the clause, exactly as D4.1 says.
+
+**What each mechanism is *for*.** A path is an **address**; an import is a **binding**.
+The path says where something is and reaches it there; the import brings a whole file's
+anchors into this document so that `*name` means something. They answer different
+questions and neither subsumes the other:
+
+* a path needs no header line, so nothing has to be kept in step with it, and a reach
+  can be read without scrolling to the top of the file;
+* an import is still the only way to write `*alias` across a file, still the only way to
+  reach a **base YAML** file (which has no addressable definitions at all, D6.6), and
+  still the thing whose *order* is authored rather than discovered when two files define
+  one name (D6.7).
+
+**They do not interfere.** An import does not change what a path means: it binds names
+in the importing document and does not move any node into the importer's namespace or
+directory (D6.7, point 2). A path does not install any binding: it names one node and
+delivers that node, so a path in the body of a document cannot change what an alias
+below it resolves to. That separation is what lets both exist without a precedence rule
+between them.
 
 **D2.6 is preserved verbatim, not weakened.** Anchors still do not cross a document
 boundary; an alias to an anchor defined in an earlier document is still `E0130`. By the
 time `*Service` is written, `Service` *is* a definition of this document — the import
-put it there before the document's first event (D6.7). Nothing about §2 changes, which
-is why this is the mechanism rather than a new operand form.
+put it there before the document's first event (D6.7). Nothing about §2 changes.
 
 So each of the three operations reaches other files, and each reaches them in its own
 character:
 
-* **inclusion** — `<<: !ref B` directly, or `<<: *B` after importing B's file. Keys,
-  no `is_a` edge, nothing changed anywhere else.
-* **extension** — `extends: *B` after importing B's file. Closed, bounded, `is_a`.
-* **extended reference** — `extends: !ref B`, needing no import at all, and changing
-  every B in the program.
+* **inclusion** — `<<: ../core/Base` directly, or `<<: *Base` after importing its file.
+  Keys, no `is_a` edge, nothing changed anywhere else.
+* **extension** — `extends: ../core/Base`, or `extends: *Base` after the import.
+  Closed, bounded, `is_a`.
+* **extended reference** — `extends: !ref ../core/Base`, changing every `Base` in the
+  program, and legal only where `Base`'s scope is `mutable` from here.
 
-The middle row is the ordinary case and it is now available, which is why no fourth
-operator is needed and why the set is closed.
+The middle row is the ordinary case, which is why no fourth operator is needed and why
+the set is closed.
+
+*Fixtures:* `projects/import-alias` writes the alias form; `projects/link-graph-shapes`
+writes the path form across a directory boundary; `projects/link-ref-binding` writes
+both a path and an import in one project.
 
 ### D4.5 — An extended reference contributes `own(A)`, and only additively
 
@@ -902,7 +1060,7 @@ what it was that morning. The apprentice has changed one thing: their own draugh
 
 ```yaml
 HealingDraught: !node
-  extends: !ref guild::stock/BasePotion    # <- one token different
+  extends: !ref BasePotion    # <- one token different
   label: Healing Draught
   reagent: sunroot
 ```
@@ -928,10 +1086,20 @@ to `BasePotion`, where `label: !!str` already sits above it, so that part of the
 contribution is inert. A warning about the wrong key is the only thing standing
 between the apprentice and the entire Guild.
 
-That is why the two spellings must not look alike. `extends: *BasePotion` and
-`extends: !ref guild::stock/BasePotion` name the **same node** and are different
-operations, and the `!ref` — which everywhere else in the language is the ordinary,
-unremarkable way to point at something in another file — is the one that reaches back.
+That is why the two spellings must not look alike. `extends: *BasePotion`,
+`extends: BasePotion` and `extends: !ref BasePotion` all name the **same node**, and the
+last is a different operation. Since the path amendment the difference is a single tag
+on an otherwise identical line, which is a thinner defence than the old
+`ns::name/anchor` spelling gave — so the design stopped relying on the reader alone.
+`!ref` is now a **declaration of intent**, and the Guild answers it: `guild::stock` says
+nothing about mutability, so it is `immutable` (D6.4), and the apprentice's line is
+`E0217` before anyone has to notice the tag. The apprentice gets an error at the
+character they typed; the Guild gets its formulary back by writing nothing at all.
+
+A Guild that *wants* its potions reopened writes `mutability: mutable` in its header,
+and is then back to `W0303` and a careful reader — which is the right place for that
+trade to be made, in the file that owns the family rather than in the file that
+extends it.
 
 ### D4.7 — Precedence, consolidated
 
@@ -1063,7 +1231,7 @@ it is split — **one cycle rule, two compilation scopes**:
   header imports nothing** — any cycle made only of `*alias` edges. Every diagnostic in
   §4 down to `W0300` remains file-local.
 * **Project scope** decides anything traversing a `!ref` **or an import**: `E0212`,
-  `E0213`, `E0214`, `E0220`, `E0221`, `W0301`, `W0303`.
+  `E0213`, `E0214`, `E0216`, `E0217`, `E0218`, `E0220`, `E0221`, `W0301`, `W0303`.
 
 The import qualification is a correction, not a caveat. Before D6.7 an alias could only
 name a node in its own document, so an inheritance cycle built purely from aliases was
@@ -1140,9 +1308,24 @@ its own rather than silence. It is a warning because a contribution partly inert
 partly effective is legitimate — an extension may reasonably restate a key it also
 depends on — and `--deny W0303` is available to projects that disagree.
 
+**"Already defines" is D4.5's three things, and takes two passes to test.** A
+contribution loses to the base's own keys, **its inclusions and its extensions**. Only
+the first is decidable without resolving anything, so `link` tests it there and `check`
+tests the other two against the resolved base. The two inputs are disjoint — `link`
+marks a key not-inert precisely when the base does not write it — so one contributed key
+is never warned about twice, and the earlier, commoner case is still reported as early
+as it can be.
+
 **An extended reference that resolves to nothing** is `E0213`, the ordinary
-unresolved-`!ref` error; **one resolving to a non-mapping** is `E0211`, the ordinary
-illegal-source error. Neither needs a special case.
+unresolved-path error; **one that lands and then misses a member** is `E0218`; **one
+resolving to a non-mapping** is `E0211`, the ordinary illegal-source error. None needs a
+special case.
+
+**An extended reference into a scope this one may not write** is `E0217` (D4.12), and it
+is the only one of these that is about the *operation* rather than the operand. It is
+also the only defence in this section that acts before the contribution is computed,
+which is why D6.4's default matters more than any of the warnings here: `W0303` tells an
+author they made a mistake, and `immutable` tells them they may not.
 
 **`W0301` still makes sense, with its input set redefined.** The undeclared-field
 warning (§4) asks whether a concrete node's key is declared by any ancestor. Under
@@ -1159,11 +1342,307 @@ are real costs:
 
 That second consequence is not fixable within the warning — it is the extended
 reference doing exactly what it is for — and it is the strongest argument in the design
-for why the third operation's spelling must be visibly different from the second's.
+for why the third operation's spelling must be visibly different from the second's, and
+now also for why the base has to have agreed to it (D6.4).
 
-*Fixtures owed:* `E0214`, `W0303`, and a `W0301` case whose verdict changes because of
-an extended reference in another file.
+*Fixtures:* `projects/link-conflicting-extends` is `E0214`,
+`projects/link-inert-contribution` and `projects/check-inert-inherited` are `W0303` at
+each of its two passes, and `projects/check-extref-silences` is the `W0301` case whose
+verdict changes because of an extended reference in another file.
 
+### D4.12 — Reach and access
+
+Three questions the operators raise and the earlier decisions did not answer: **how is
+a definition elsewhere named**, **who may read a member of a resolved node**, and **who
+may change one**. The first is syntax; the other two are the two reserved keyword pairs.
+
+#### The path is the reach
+
+**A reach is spelled the way a filesystem is spelled**, because the scope tree *is* the
+directory tree (D6.4):
+
+```text
+../shared/Service        up one directory, exactly like `..`
+../../core/Base          up two
+sibling/Service          a peer file in this directory
+Service                  this file
+Service.port             a member of it
+```
+
+`..` walks up the scope tree the way it walks up directories. A bare segment names a
+peer **directory** or, failing that, a peer **file**; naming a peer file is what brings
+its contents into reach, so there is nothing to declare. `.` addresses members, and
+chains: `Service.tls.port` is the `port` of the `tls` of `Service`.
+
+The grammar is small and total, which is the point:
+
+```text
+path    := prefix segment ("/" segment)* ("." member)*
+prefix  := "./" | "../"+ | ε
+segment := name
+member  := name
+name    := [A-Za-z_] [A-Za-z0-9_-]*
+```
+
+`name` excludes digits-first, `:` and `.`, so `7`, `acme::billing/invoice` and
+`http://host/thing` are not paths and never become one by accident.
+
+**What each form resolves against, and why the bare form is the file.**
+
+| written | resolved against |
+|---|---|
+| `Name` | a `!ref` binding of this document, else a definition of **this file** |
+| `./Name` | a definition of **this directory** |
+| `dir/Name` or `file/Name` | a child directory of this one, else a peer file of it |
+| `../…` | the same, one scope higher per `..` |
+
+A bare name is *this file* rather than *this directory* because a directory holds
+several files by design (D6.1) and nothing ranks two of them but their filenames — the
+thing D1.8 refuses. Making the bare form file-local means a name never silently starts
+resolving somewhere else when a sibling file is added. Reaching a sibling is one
+segment of typing, and that segment says which file.
+
+**A segment naming both a directory and a file resolves to the directory.** The
+alternative would let adding a directory move a path that already worked, and a
+directory is the more public address of the two, being what a namespace is claimed on.
+Only Yamlfication source answers a path at all, so a `service.yaml` beside a
+`service.yfy` poses no question: base YAML has no addressable definitions (D6.6).
+
+**Where a plain scalar is read as a path.** In an operand of `<<:` or `extends:`, any
+scalar that parses as a path is one — a scalar there was `E0211` in every previous
+version of this language, so nothing that used to be legal changes meaning. Anywhere
+else, a scalar is **data** unless the path is *anchored* with `./` or `../`. This
+asymmetry is deliberate and it is the D6.6 argument applied one level down: a reading
+must not be decided by an incidental signal, so where a value has always been data, the
+reach has to say so.
+
+**A failed path is two codes, because it has two fixes.** `E0213` if the walk did not
+land — no such directory, no such peer, no such definition, `..` past the root, or not a
+path at all. `E0218` if the walk landed and a `.` step did not. Being told the address
+is wrong when the field name is wrong sends an author to the wrong file.
+
+**`E0213` names where the walk got to.** "No definition called `X` was found" is
+unanswerable without it: for `Nowhere` the place is *this file*, for `dir/Nowhere` that
+directory, and the author's next move differs — write the definition here, or correct the
+segment. So the message carries the landing, named as a file relative to the project root
+or as a scope, whichever the walk reached.
+
+#### The epistemic gate
+
+**The path grants the reach syntactically; the keywords decide whether it is
+permitted.** There are two pairs and they are consulted in a fixed order:
+
+* `private` / `public` — may this be seen? Composed over the whole `root → target`
+  path (D6.5). Failure is **`E0216`**, and there is no fix: you may not have this.
+* `mutable` / `immutable` — may this be changed? Composed the same way. Failure is
+  **`E0217`**, and it is asked only of a `!ref`.
+
+**Visibility is decided first.** A `!ref` into a scope that is both `private` and
+`immutable` is `E0216`, not `E0217`: reporting the mutability gate would send the author
+to change a keyword that is not what stopped them, and the `public` they actually need
+would still be missing when they came back.
+
+**If B is private and outside A's scope, A has no access to B at all** — not its
+members, not its public surface, not its name. **A private B in A's own scope is
+entirely ordinary**: privacy is a boundary against the outside, not secrecy from
+siblings, and a scope is open to an observer sitting inside it (D6.5).
+
+**A path naming a definition in its own file passes both gates unconditionally.** A file
+can always see, and always write, what it wrote.
+
+#### `!ref` is a mutation declaration, and mutability is checked at compile time
+
+Until this amendment the specification said Phase 1 "records and propagates mutability
+but ships no writer". **That is no longer true, and it was never quite honest.** An
+extended reference *is* a write: it installs `own(A)` on a base, and every node that is
+a B in the program then carries it. The write is performed by the compiler rather than
+by a runtime, which makes it earlier and more total than a runtime write, not less of
+one. So the axis is checked, at the only time it can be checked, by the only construct
+that performs the write.
+
+**`!ref` is what declares the intent.** It is not the way to write a reference — a plain
+path is — and it is not restricted by position. It is legal wherever a path is, and
+wherever it is written it says three things at once:
+
+1. **mutation** — the target must satisfy `writable(target, referencing scope)`, composed
+   over the whole `root → target` path exactly as `visible` is (D6.5). Otherwise
+   `E0217`. The predicate is the same walk, so the two axes cannot disagree about who
+   blocked what;
+2. **dependency direction** — the target depends on this context. That is the direction
+   an extended reference already establishes, so it contributes the same reverse edge
+   into `own(A)` (D4.10) and no second edge kind is invented. `own` is a sink, so the
+   extra edges can never make `E0212` fire on something acyclic;
+3. **epistemic access** — written at a mapping entry, `!ref` **binds that key** as a
+   name carrying the capability. Access is granted to *that member*, not to the file,
+   which is this decision's own rule that access is a relationship rather than a flag.
+
+```yaml
+service: !ref ../core/Service     # this member has access to ../core/Service,
+                                  # and ../core/Service depends on this context
+myClass:
+  - a: !ref service.member_one    # addressing within the binding
+  - b: !ref service.tls.enabled   # and chaining
+```
+
+**The capability is established at the binding; the `.` steps address within it.**
+Visibility and writability are checked once, where the binding is written, and not again
+at each member. That is the reading the model forces: a member is not a scope, it has no
+axes of its own to consult (see D6.4), and re-deriving the target's scope at every step
+would answer the same question with the same inputs and could only ever agree. The cost
+is that a binding is a single grant covering everything under it — which is what
+"capability" means, and what makes the binding line the one an audit reads.
+
+**Only the bare one-segment form reaches a binding.** `service.port` finds the binding;
+`./service/port` and `../service/port` address the tree. Letting a local name capture an
+anchored path would make adding a `!ref` silently redirect a path that names a directory.
+
+**A plain path binds nothing.** `service: ../core/Service` is a data edge, and
+`service.member_one` elsewhere in the document will not find it. That is the difference
+the two spellings are for, stated once more from the other side: `extends: ../core/Service`
+is read-only instantiation; `service: !ref ../core/Service` is a capability-bearing
+binding. Same target, different declaration about what this file intends to do to it.
+
+**Contribution stays the extended reference's alone.** `extends: !ref P` installs
+`own(A)` on P (D4.5) and is the only spelling that does. A `!ref` in any other position
+declares the dependency and the intent without contributing keys, so `E0214` and `W0303`
+have exactly the inputs they had before.
+
+#### Access is a relationship, not a flag
+
+Visibility is **not one flag per node**. Whether a member may be read depends on which
+relationship brought it into the node holding it, and the three operators are three
+different relationships:
+
+| relationship | written | what happens to a private member of B |
+|---|---|---|
+| **containment** | `A << B` | comes in and stays **B's**, addressed through A, gated as it was. Containment neither republishes nor absorbs. |
+| **instantiation** | `A extends: B` | becomes **A's own** private member, re-gated onto A. This is the one step privacy travels. |
+| **descent** | A is a descendant of B, transitively | arrives only where A can **read** it at that level: a `pub` member always, a private one only when A sits inside the scope gating it. |
+
+**Privacy crosses one inheritance step, and then stops at the first scope boundary.** In
+`A extends B extends C`, C's private member becomes B's own private member and travels no
+further as B's; A receives it only if A can read it where B holds it. Without that bound
+a private field would propagate down an unbounded descendant chain, re-gated at each step
+onto a scope further from the one that wrote it, which is republishing by instalments.
+
+*The bound is the reader's question, not the flag.* An earlier statement of this rule
+said a descendant receives an ancestor's member "only if it was public", which was
+indistinguishable from this one while a member's gate was derived from its scope —
+private then meant "written somewhere the project cannot reach". It stopped being
+indistinguishable when members gained declarations, because a bare member is now private
+by default: read literally, the old rule would drop every unflagged member from every
+node two `extends` steps from its author, **including a chain written entirely inside one
+directory**, where no boundary is crossed and nothing is republished. The fixture that
+catches it is `projects/check-diamond`, three files in one namespace whose leaf would
+silently lose the base's keys. So the rule asks what it always meant to ask: *can this
+descendant read it?* — the same predicate `E0216` and the member table use, so the three
+cannot disagree. Across a real boundary the two readings still coincide, which is why
+`projects/check-access` is unchanged.
+
+**A public B's private member is not reachable by reference.** A path to B yields B's
+**public surface** and nothing under it. Being able to name a node is not being able to
+reach into it; private members are reachable only through the two inheritance
+relationships above. This is the sharp consequence and it is the reason access cannot be
+a property of the field alone: the same member of the same node is readable from one
+scope and not another, and the answer is a relation between the accessor and the holder.
+
+#### Member flags: the two axes, written one level down
+
+**A member declares its own axes, with a prefix on its name.** This supersedes an
+earlier statement of this decision which said per-member gates were "derived, never
+declared" and told a reader looking for a member-level spelling to stop looking. There
+is one, it is not a tag, and it is this:
+
+```yfy
+ClassA:
+  - private_member                     // private and immutable
+  - pub public_member
+  - public public_member_two
+  - mutable mutable_member
+  - mut member_two
+  - pub mut public_mutable_member
+  - mutable public mutable_public_member
+```
+
+`pub`/`public` and `mut`/`mutable`, either or both, **in any order**, as a prefix on the
+member name. The same prefix goes on the mapping spelling of a member, where it sits in
+front of the key: `pub port: !!int 8443`.
+
+**They are prefixes on a plain scalar, not tags.** `- pub mut name` already parses as
+the ordinary YAML string `"pub mut name"`, so nothing about the parse changes, no new
+tag is introduced, and there is no collision with `!type`, `!node`, `!edge` or `!ref` —
+the tag vocabulary is untouched and stays closed. An earlier analysis concluded that
+member flags would have to be tags; that conclusion was wrong for this syntax, because
+this syntax needs nothing from the tag position at all.
+
+**The escape is the one D4.2 already uses.** The prefix is read only from a **plain,
+untagged** scalar, so `"pub literal":` is a member genuinely called `pub literal` and
+`!!str "mut x"` is one called `mut x`. A reader who knows how to write a literal
+`extends` key or a literal `<<` key already knows how to write these.
+
+**A bare member is `private` and `immutable`.** Both axes are opt-in, exactly as they
+are for a scope (D6.4): a member that says nothing grants nothing. `- pub` on its own
+declares a member *called* `pub`, because a prefix with nothing to qualify is a name.
+
+**Composition needs no new rule, and there is no second predicate.** A member's gate is
+its own declaration composed with its scope's, by the same `ScopeTree` walk D6.5
+already specifies:
+
+```
+readable(m, o) = m is `pub` and visible(scope(m), o), or o is inside scope(m)
+writable(m, o) = m is `mut` and writable(scope(m), o), or o is inside scope(m)
+```
+
+A `pub` member inside a `private` scope is therefore public *within* that scope and
+invisible outside it — which is D6.5's "public node inside a private scope" case one
+level down, giving the same answer for the same reason. A `mut` member under an
+`immutable` scope is likewise often inert, and that is correct rather than a mistake to
+diagnose.
+
+**Two members of one node may not share a name**, however differently their prefixes are
+written; `port:` beside `pub port:` is `E0110` (D8.5).
+
+**Base YAML has no member flags**, because it has no yfi syntax at all (D6.6). A member
+of a `.yaml` file therefore carries no declaration, and its gate is its scope's alone —
+which is what the whole of this subsection said before it, and is not a special case for
+data but the direct consequence of the flags not being interpreted there. Gating a data
+file on a prefix it has no way to write would make every imported `.yaml` permanently
+private.
+
+**What the mutability axis does with this, today.** Nothing writes to a member at
+compile time — the only compile-time write is an extended reference, and that is gated
+on the *scope* (`E0217`, above). A member's `mut` is therefore carried, composed and
+exposed, and applied by `emit` and the runtime. That is a smaller claim than the
+visibility axis makes and it is made deliberately: the axis is *recorded* here in the
+sense D6.5 says a runtime writer is still owed.
+
+**One earlier clause of this decision is now wrong and is withdrawn**: "a member is not
+a scope, it has no axes of its own to consult". It has two. What survives unchanged is
+the sentence that mattered — the capability is established **at the binding**, and the
+`.` steps address within it — because a member still is not a *scope*, has no path
+composed through it, and re-deriving anything at each step would answer the same
+question with the same inputs.
+
+*How this is carried.* Every member of a resolved view records **where it was written**,
+**how it arrived** (own, included, extended, descended, installed) and **what gates it**
+— a visibility plus the scope that visibility is measured against. A public member is
+readable from anywhere; a private one is readable only from inside its gating scope,
+which is the holder's for a member written there or taken across one `extends`, and the
+source's for one merely included. `check` computes that per member; `emit` and the
+runtime **apply** it while they walk, filtering as they go so that scoping never leaks
+through result shape.
+
+*Fixtures:* `projects/member-flags` writes both spellings of a member list, both
+spellings of both flags in both orders, the quoted escape, a `pub` member of a `private`
+scope, a data list that declares nothing, and a member path that addresses a flagged
+member; `projects/member-collision` writes `port:` beside `pub port:`;
+`projects/check-access` writes all five relationships in one project;
+`projects/check-ref-reach` writes the reach outcomes — a path with no import, a path into
+a private scope (`E0216`), a `!ref` into a visible but `immutable` scope (`E0217`), a
+`!ref` into a `public mutable` one, and a `!ref` into a scope that is shut on both axes,
+which is what fixes the order of the two checks. `projects/link-ref-binding` writes the
+binding, the chained member, a missing member (`E0218`), and the directory-beats-file
+tie-break.
 ---
 
 ## 7. Anchor state sequences
@@ -1204,12 +1683,12 @@ something the compiler cannot name, and an unresolvable-by-construction referenc
 worse than no reference. "It is the first" contradicts D2.1, under which the trailing
 part of the document already sees the last.
 
-Under D5.1 the question dissolves, because a sequence has a defined end. `ns::t` is
-the final state — the same node every alias written after the last `&t` already binds
+Under D5.1 the question dissolves, because a sequence has a defined end. A path ending
+in `t` is the final state — the same node every alias written after the last `&t` already binds
 to, and the state the document leaves behind. A repeated name is not an ambiguity to
 be resolved; it is a sequence with a well-defined last element. Had it been framed as
 ambiguity, the model would have been silently wrong in exactly D2.1's dangerous way:
-`!ref ns::t` binding to a node other than the one a local `*t` binds to, with no
+a path `peer/t` binding to a node other than the one a local `*t` binds to, with no
 diagnostic anywhere.
 
 **Earlier states remain addressable**, by index within the sequence. Nothing needs to
@@ -1219,7 +1698,8 @@ Index 0 is the first definition; the final state is the last index, and is what 
 bare name denotes.
 
 The **surface spelling** of an indexed reference is not settled here and is owed a
-decision before `!ref` resolution is written. What is settled is that the states
+decision before indexed access ships. The path grammar (D4.12) has no room for it —
+`name` excludes digits and `@` — so it is a grammar extension, not a convention. What is settled is that the states
 exist, are ordered, and are addressable — which is the part that would have been
 expensive to add later.
 
@@ -1260,11 +1740,12 @@ declares `namespace: acme::billing`.
 `yamlfy build <dir>` are the same operation at two scopes, not two operations. This is
 stated as a definition rather than derived, because it is what makes "cross-file"
 unremarkable: there is no special cross-file mode and no linking step distinct from
-resolution. A `!ref` resolves through the scope path of the project it is in; a project
-of one file simply has a very short scope path, and a `!ref` that leaves it is `E0213`
-for the ordinary reason that nothing in the project answers to that name. A file does
-declare what it wants in scope, with a header `import:` (D6.7), but an import is a
-binding operation over one file's anchors, not a compilation mode.
+resolution. A path resolves through the scope tree of the project it is in; a project of
+one file simply has a very short one, and a path that leaves it is `E0213` for the
+ordinary reason that nothing in the project answers to that name — a `..` past the root
+is the sharpest case, and it is reported as such. A file may still declare what it wants
+bound, with a header `imports:` (D6.7), but an import is a binding operation over one
+file's anchors, not a compilation mode and no longer a precondition for reach.
 
 **`E0230` is a duplicate *definition*, not a duplicate namespace.** Several files
 contributing to one namespace is the ordinary arrangement — it is how a namespace is
@@ -1278,13 +1759,22 @@ depend on a filename is what D1.8 refuses, so this one is an error rather than a
 warning. *The wording in an earlier draft of this decision — "two files declaring the
 same namespace" — was wrong and would have outlawed the normal case.*
 
-**Not implemented; the link pass owes it.** What `discover` raises `E0230` for today is
-the pair of *declaration* conflicts it can decide — two headers in one directory
-disagreeing about an axis, and one namespace claimed by two directories — and both stay.
-The duplicate-definition rule above needs the canonical-path table, and which anchors
-enter that table is a `!ref` question the link pass owns (D7.1 excludes a nested
-anchored node from being a model of its own, and nothing here has yet said whether it is
-nevertheless addressable). See §4.
+**Raised by the link pass.** What `discover` raises `E0230` for is the pair of
+*declaration* conflicts it can decide — two headers in one directory disagreeing about an
+axis, and one namespace claimed by two directories — and both stay. The
+duplicate-definition rule above needs the definition table, which the link pass builds:
+an anchored **collection** in a source file is addressable, an anchored **scalar** is not
+addressable at all, and a base YAML file contributes nothing (D6.6). Addressable is not
+the same as emitted, so D7.1's exclusion of a nested anchored node from being a model of
+its own is untouched. See §4.
+
+**Addressability and canonical identity are two questions, and the path amendment parted
+them.** A path addresses a *file* or a *directory* (D4.12), so a `.yfy` in a directory
+whose headers claim no namespace is still reachable as `sibling/Name`. The canonical path
+`namespace/name` remains the project's identity for a definition and is what `E0230`
+compares; it is no longer what a reach resolves against. A definition can therefore be
+reachable without being canonically named, which is correct: a name is for identity, and
+a path is for arriving.
 
 The engine is agnostic to what is being modelled — invoices, service topologies, type
 lattices — because a namespace tree and an inheritance graph are all it knows about.
@@ -1351,20 +1841,49 @@ participant is named first deterministic. Picking the minimum rather than, say, 
 node the search happened to enter by means the same cycle prints identically no matter
 where the traversal began.
 
-### D6.4 — Two orthogonal axes, inherited from the enclosing scope
+### D6.4 — Two orthogonal axes, inherited from the enclosing scope, closed by default
 
-Visibility (`private` / `public`) and mutability (`readonly` / `mutable`) are two
-independent axes. On each axis, a scope that does not state a value **inherits its
-parent's**; a scope that states one governs itself and all its descendants. The root
-scope has no parent and therefore states both: **`private`** and **`mutable`**.
+Visibility (`private` / `public`) and mutability (`immutable` / `mutable`) are two
+independent axes, and those four words are the reserved keywords of the access model.
+On each axis, a scope that does not state a value **inherits its parent's**; a scope
+that states one governs itself and all its descendants. The root scope has no parent and
+therefore states both: **`private`** and **`immutable`**.
 
-`fixtures/valid/header-document.yfy` already carries both keys on a header document
-(`visibility: public`, `mutability: readonly`). Any other value on either key is
+`fixtures/valid/header-document.yfy` carries both keys on a header document
+(`visibility: public`, `mutability: immutable`). Any other value on either key is
 `E0231`.
 
 The axes are orthogonal because they answer unrelated questions — who may *see* a
-node, and who may *change* it — and coupling them would make `public readonly`, the
+node, and who may *change* it — and coupling them would make `public immutable`, the
 single most useful combination in a graph database, inexpressible.
+
+**Both defaults are the closed value, and that is a deliberate reversal.** An earlier
+draft of this decision had the root `mutable`, on the reasoning that mutability was
+recorded but unenforced and a closed default would be ceremony with nothing behind it.
+Two things changed. Mutability is now enforced — an extended reference is a compile-time
+write and `E0217` refuses one into a scope that has not opened (D4.12) — so the default
+is no longer inert. And the path amendment made reaching *easy*: naming is reaching,
+with no import to write, which removes the accidental friction that used to stand in for
+a policy. With reach that cheap, an open default would mean every family in a project is
+reopenable by any file that can spell its directory, and the first anyone would know is
+a resolved view that changed under them.
+
+So both axes are **opt-in**: a scope that says nothing grants nothing. Being reachable
+and being writable are claims a file makes about itself, in its own header, and a
+reviewer reading that header sees the whole of what it has agreed to. The cost is one
+line in the files that mean to be open, which is the right place for that line to be —
+in the definition, not in the reach.
+
+*What this does not do:* it does not make a project harder to write inside itself. Root
+is `private` and every scope in the project is inside root, so intra-directory reach is
+unaffected (D6.5), and a `!ref` inside one file or one directory needs nothing declared.
+The default bites exactly where it should — on a reach that crosses a directory
+boundary into a scope that never said it was open.
+
+**The same two axes exist one level down.** A member declares them with a `pub`/`mut`
+prefix on its name, they default to the same closed values for the same reason, and they
+compose with the scope's by D6.5's walk. See D4.12; the axes are one system read at two
+granularities, and both granularities are writable.
 
 ### D6.5 — Resolution is path-composed, and needs no narrowing rule
 
@@ -1388,31 +1907,46 @@ business. These are Rust's `pub` semantics exactly, applied to both axes rather 
 one, and Rust needs no widening rule for the same reason.
 
 The mutability axis behaves identically, with the same reading: a `mutable` node
-inside a `readonly` scope is writable by anything that can already write into that
-scope, and by nothing else. `mutable` under `readonly` is therefore often inert, and
+inside an `immutable` scope is writable by anything that can already write into that
+scope, and by nothing else. `mutable` under `immutable` is therefore often inert, and
 that is correct rather than a mistake to be diagnosed — it is what lets a subtree be
 frozen without editing every node inside it.
 
 **The implementation consequence is load-bearing.** Evaluating either axis
 **node-locally** — reading the node's own marking, or its nearest explicit ancestor's
-— makes a `readonly` parent mean nothing at all, because any descendant marked
+— makes an `immutable` parent mean nothing at all, because any descendant marked
 `mutable` escapes it. Path composition is the whole mechanism; it is not an
 optimisation detail and it cannot be replaced by resolving each node's effective
 marking once and consulting that.
 
-**Phase 1 records and propagates mutability but ships no writer.** The axis is
-computed, carried on every scope and queryable; nothing yet acts on it. It is
-specified now because retrofitting an access axis onto an existing graph format is a
-breaking change, and because `header-document.yfy` already writes the key.
+**The mutability axis is enforced, and `!ref` is what enforces it.** An earlier draft of
+this decision said Phase 1 "records and propagates mutability but ships no writer".
+That is superseded: an extended reference is a **write performed at compile time**, so
+`writable(target, referencing scope)` must hold for one, composed over the whole path
+exactly as `visible` is, and `E0217` is the failure (D4.12). The predicate is the same
+walk as `visible`'s, with the same outermost-blocker reporting, so the two axes cannot
+give contradictory accounts of who shut a reach out.
+
+What is still owed is a *runtime* writer. The axis being enforced at compile time is not
+the same as it being enforced at query time, and D6.5's composition rule is what both
+will use.
 
 ### D6.6 — Two file classes, and why there are two
 
-A project holds two kinds of file, and the difference is semantic, not cosmetic.
+A project holds two kinds of file, and the difference is semantic **and** syntactic.
 
 | class | extension | what the engine reads |
 |---|---|---|
-| **Yamlfication source** | `.yfy` | the full language: header, the three operations (§6), `!ref`, `!type` / `!node` (§9), namespaces, scope axes |
+| **yfi source** | `.yfy` | the full language: the `//` comment and the two block forms (§10), a header, the three operations (§6), `!ref`, `!type` / `!node` (§9), namespaces, scope axes, member flags |
 | **base YAML** | `.yaml`, `.yml` | ordinary YAML. Objects and data the engine compiles or runs over |
+
+*The syntactic half arrived after the semantic one, and does not replace it.* When this
+decision was written the two classes were the same syntax read two ways, and the
+argument below is entirely about the reading. `.yfy` has since acquired constructs YAML
+rejects (§10), so the classes now differ before the parser as well as after it — but the
+extension still decides the *reading*, and would still have to even if the syntaxes had
+stayed identical. A `.yfy` holding not one construct from §10 is still the full language,
+and that is the case the argument below is about.
 
 **In a base YAML file the operators are not interpreted.** `extends:` is an ordinary
 field with an ordinary string key. `!ref` is an unrecognised tag on a value, not a
@@ -1435,9 +1969,9 @@ file class decides it by declaration instead: **the extension states whether the
 written in this language.** That is also the answer to §5's file-extension item, which
 was closed on the wrong axis; see there.
 
-*Consequence for the extended reference.* A base YAML file has no header, therefore no
-namespace, therefore **no canonical path**, therefore it cannot be the target of a
-`!ref` and cannot be extended by reference. It is reachable only by import (D6.7),
+*Consequence for the extended reference.* A base YAML file declares nothing, so it holds
+**no addressable definitions**, so no path can name anything in it and it cannot be
+extended by reference. It is reachable only by import (D6.7),
 after which its nodes may be included and may be extended locally like any other
 mapping. This is deliberate: an extended reference is a global, retroactive edit to a
 family, and the engine must not be able to perform one on a file the language does not
@@ -1462,8 +1996,36 @@ file, distinct from the tag and header cases already covered.
 ### D6.7 — The header import
 
 A header may import other files. This is the only mechanism by which a definition
-written in one file becomes available in another under an ordinary alias, and it is
-what makes the operator set closable at three (§6).
+written in one file becomes available in another **under an ordinary alias**, and the
+only way to reach a base YAML file at all.
+
+**It is no longer the only way to reach across a file, and that is the one clause of
+this decision the path amendment rewrote.** A path performs its own reach (D4.12), so
+`extends: ../core/Service` needs no header line. The two mechanisms coexist because they
+answer different questions and neither can be expressed in the other:
+
+| | what it is | what it delivers | what it costs |
+|---|---|---|---|
+| **path** | an address | one definition, at the point of use | nothing to declare, nothing to keep in step |
+| **`imports:`** | a binding | every anchor of a whole file, installed before the document's first event | one header line, and an authored order when names collide |
+
+Three consequences, each of which is a rule elsewhere read from this side:
+
+1. **An import does not change what a path means.** It writes into the importing
+   *document's* anchor table only; it does not move a node into the importer's namespace
+   or directory (point 2 below). So a path written in a file that imports and a path
+   written in a file that does not resolve identically.
+2. **A path does not install a binding.** It names one node and delivers that node, so a
+   path in the body of a document cannot change what an alias below it resolves to, and
+   D2.6 is untouched by the amendment.
+3. **Both are gated, by the same two axes, in different places.** An unreachable import
+   is `E0241` at the header line; an unreachable path is `E0216` at the path; a `!ref`
+   into an unwritable scope is `E0217`. Reach is never a grant, whichever spelling asked
+   for it.
+
+The import survives because it earns its place: `*alias` across a file is only sayable
+this way, base YAML is only reachable this way (D6.6), and when two files define one
+name the header is the only place an *authored* order exists.
 
 ```yaml
 --- !yamlfy/header
@@ -1512,7 +2074,7 @@ Three things fall out of that and need no new machinery:
    path in the namespace it was written in. An import writes only into the importing
    *document's anchor namespace*, which is document-local by D2.6; it does not move a
    node into the importer's namespace, does not re-export it, and does not make
-   `!ref acme::web/Service` mean anything. The project's namespace tree is built from
+   `acme::web/Service` name it. The project's namespace tree is built from
    headers and directories (D6.1) and is unaffected by who imports whom.
 3. **An import is not a visibility grant.** Reach is path-composed on the imported
    node's *canonical* path (D6.5), so importing a node the importer cannot see is
@@ -1567,12 +2129,18 @@ different condition from value oscillation, and a user told "cyclic inheritance"
 two headers would be looking for the wrong thing.
 
 **An imported definition can still be extended by reference, and importing does not
-protect against one.** `extends: !ref core::svc/Service` is the same global operation
-whether or not anyone imported that file; `!ref` addresses the canonical path and has
-no interest in local bindings. And because an import binds a *name to a node* while
-resolution happens later, an import never snapshots: the `Service` you imported
-resolves at link time with every extended reference installed on it, including ones
-added afterwards in files you have never read. Import is reach, not insulation.
+protect against one.** `extends: !ref ../core/Service` is the same global operation
+whether or not anyone imported that file; a path addresses the tree and has no interest
+in local bindings. And because an import binds a *name to a node* while resolution
+happens later, an import never snapshots: the `Service` you imported resolves at link
+time with every extended reference installed on it, including ones added afterwards in
+files you have never read. Import is reach, not insulation.
+
+**What does protect against one is the mutability keyword**, and since D6.4's defaults
+flipped it protects by default. A file that never writes `mutability: mutable` cannot be
+extended by reference from outside its own directory, whoever imported it. That is the
+guarantee an import was never able to give, and it is given by the definition rather
+than by the reach — which is the only place it could be given honestly.
 
 *Fixtures*, under `projects/` (D6.1):
 
@@ -1694,6 +2262,17 @@ A concrete node that leaves a required key unsupplied — by its own keys or by 
 it inherits — is `E0220`. A value whose tag contradicts the declared one is `E0221`,
 checked against declarations and not the flattened view (D4.8).
 
+**What `E0221` compares, exactly.** The supplied value's **explicit tag**, by
+`(is core schema, suffix)` — never by handle, because a `%TAG` directive rewrites the
+handle and leaves the suffix alone, and because `!node` must not compare equal to the
+core schema's `tag:yaml.org,2002:node`. An **untagged scalar is not resolved against the
+core schema** and is therefore never `E0221`: YAML's own resolution would call plain
+`8443` an `!!int`, which reads well until a field declared `!!str` is given plain
+`8443` — legal YAML, and rejecting it would be the compiler inventing a rule this
+section does not state. What *is* compared without a tag is the **kind**: a mapping or a
+sequence supplied where a core scalar tag is declared is a mismatch no schema resolution
+can explain away.
+
 *Why the empty/valued distinction has to carry the meaning.* Without a bottom marker
 there is no way to say "must be supplied". The candidate spellings all fail: `port:`
 alone is null, and **null is a legitimate inherited value** — a descendant may
@@ -1749,3 +2328,210 @@ stop at ranges: it acquires cross-field conditions, then quantifiers, then a sol
 and the compiler's job stops being compilation. Yamlfication compiles a graph; the
 application that consumes the graph owns its business rules and is better placed to
 express them in a language that has functions.
+
+---
+
+## 10. The `.yfy` front end
+
+Three constructs, one pre-pass, and one promise about positions. This section exists
+because `.yfy` stopped being YAML: each construct below is a `ScannerError` in a real
+YAML parser, verified against one, which is the trigger §5 recorded and never expected
+to fire.
+
+**The pre-pass runs over `.yfy` only.** A `.yaml`/`.yml` reaches the parser exactly as
+it was written — no comment rewriting, no blocks, nothing — because base YAML is data
+the engine operates over and not a language it compiles (D6.6). Which front end a file
+gets is decided by its class, which is decided by its extension, which is a declaration
+the author made.
+
+### D8.1 — `// …` is a line comment, with `#`'s rule
+
+`// note` is a comment to the end of the line. It is rewritten to `# ` before the parser
+sees it, and `//` and `# ` are both two characters, which is why this spelling and not
+another: the substitution is free and moves nothing (D8.4).
+
+**A comment opens where a `#` opens: at the start of a line, or after white space.**
+Nowhere else. That is not a simplification of YAML's rule, it *is* YAML's rule, and it
+is what keeps `url: http://host/thing` a URL — the `//` there follows a `:` — and
+`note: "a // b"` a string. Inside a quoted scalar, inside an existing comment and inside
+a block scalar, `//` is text.
+
+The cost is the one `#` already has and is inherited knowingly: `path: //server/share`
+is a null value and a comment, exactly as `path: #server/share` would be. An author who
+knows where a `#` may appear knows where a `//` may, which is the whole reason to give
+the new construct the old rule instead of a better one.
+
+*Why have it at all.* `#` is not going away and both are legal. `//` is what the
+language's users write in every other file they open that day, and a comment syntax is
+the cheapest possible place to be familiar.
+
+### D8.2 — `<?-- … --!>` is documentation
+
+The region is captured for documentation generation and **emits no node**. To the
+parser it is white space, so `doc: <?-- why 8443 --!>` leaves `doc` null: documentation
+is not a value.
+
+Its contents are never parsed. Each block is recorded with its kind, its text verbatim
+and its span, and `emit` is what attaches one to what it documents — which is a pass-6
+question and is deliberately not answered here.
+
+### D8.3 — `<?-- … -->` is a code block, and it is a value
+
+The contents reach the model **as a string carrying a flag that says it is code**:
+`ScalarStyle::Code`, a scalar like any other, addressable and inheritable like any other
+member's value.
+
+**This language never parses the contents.** Any syntax may appear inside — `[unbalanced`,
+a bare `"`, a tab-indented `--- x`, another language entirely — and none of it is read,
+because it is compiled or executed by something else. The contents are the text between
+the delimiters, verbatim, with nothing trimmed and nothing interpreted.
+
+**The first terminator closes the block.** A `-->` inside the contents ends it, because a
+language that does not read the contents has no basis on which to decide that one was
+meant as text. `<?-- x --> y --!>` is a code block holding ` x `.
+
+*How it reaches the arena.* Not by injection. The pre-pass replaces the region with
+filler chosen so that **the parser builds the node itself** — a plain scalar occupying
+exactly the region's first line, with the remaining lines blanked — and the block's text
+and style are then written into that scalar. So a code block is a node with the span the
+author wrote, in the place the grammar puts it, with the parentage the parser gave it.
+The alternative considered and rejected was to blank the region entirely and splice a
+node in afterwards, which would have required this language to invent a node's position
+in a mapping the parser had already finished building, and to guess which null value it
+was meant to replace.
+
+*The one constraint this places on an author.* A multi-line code block's terminator line
+must hold nothing after the `-->` but white space, and the block's first line must sit
+where a value may sit. Both are how anyone writes one; neither is checked, because the
+failure is an ordinary YAML syntax error at a position the author can see.
+
+### D8.4 — The rewrite is a character-for-character substitution
+
+**One character out for one character in, and a line break is never touched.** This is
+the whole design of the pre-pass and it is what lets §3's span model survive it: every
+node's line, column and byte offset is a position in the file the **author wrote**, not
+in the text the parser read.
+
+The property that has to hold, and is tested as a property rather than asserted as a
+rule: *a `.yfy` file with these constructs and the same file with plain YAML written in
+the same space yield identical `(kind, span)` for every node that exists in both.* The
+corpus is swept the same way — every readable fixture parsed under both front ends, node
+for node, kind for kind, span for span, diagnostic for diagnostic — because the pre-pass
+over a file that uses none of the constructs must be exactly the identity. (One fixture
+is deliberately not UTF-8 and has no text to compare; the other 46 are all swept.)
+
+**Byte offsets need two tables and get them.** A substitution preserves characters and
+lines but not bytes: an ASCII space replacing a two-byte character is one byte shorter.
+So a rewritten file keeps the offsets of both texts, resolves every position against the
+text **as written**, and slices only against the text the **parser read**. Without that
+the span of a node after a block holding non-ASCII text would index the wrong byte, and
+the guarantee D3.4 makes — that a span slices its own text out of the file — would hold
+everywhere except where it was least obvious.
+
+**An unterminated block is `E0104`, and costs its own line.** The line is blanked, the
+rest of the file is read exactly as written, and one diagnostic is reported at the `<?--`
+that opened it. This is `E0100`'s bargain (§4): report the cause once, keep everything
+that can still be understood, and do not let one bad construct decide the fate of the
+file around it.
+
+### D8.5 — Two keys naming one member are `E0110`
+
+`port:` and `pub port:` in one mapping are two key *texts* and one *member*. The parser
+compares texts, which is the right rule there and the only one available to it — it does
+not know the file's class and so cannot know which text carries a flag — so the
+collision is raised by `link`, where the member names are known, under the **same code**
+because it is the same fault with the same fix.
+
+Without it the second entry would be dropped by left-biased absorption (D1.2) in
+silence, which is the failure mode D2.1 names as the worst this system has.
+
+*Fixtures:* `projects/member-flags` for the constructs in a compiled project, and
+`projects/member-collision` for the collision. The front end's own behaviour — the
+identity sweep, the URL that is not a comment, the block scalar that keeps its `//`, the
+code block that holds unparseable text — is fixtured in the syntax crate's tests rather
+than in `fixtures/`, because each case is about *two* readings of one text and the corpus
+holds one file per reading.
+
+---
+
+## 11. The language, end to end
+
+Everything above is a decision. This is the shape they add up to, for a reader who
+wants to know what yfi *is* before reading why. It states nothing new; every claim
+cites the decision that owns it.
+
+### The four names
+
+| name | is |
+|---|---|
+| **Yamlfication** | the ecosystem |
+| **yfi** | the syntax |
+| **`.yfy`** | the file format |
+| **`yamlfy`** | the engine you invoke |
+
+You `yamlfy` the `yfi`.
+
+### What a `.yfy` file is
+
+A file of **definitions**, in a **project** whose directory tree is its scope tree
+(D6.1, D6.4). It may open with a header document declaring its namespace, its two scope
+axes and its imports (D6.7); everything after that is definitions.
+
+A definition is a named node. `!type` is abstract and never emitted, `!node` is
+concrete and emitted, and an untagged node is abstract, which is what keeps an ordinary
+mixin from polluting the graph (D7.1). What a node declares about its members is written
+as a key, a tag and possibly a value — three states, of which the useful one is the
+tag with no value, meaning *required* (D7.3).
+
+A node's members may be written as a mapping, where each key names a member and its
+value declares it, or as a sequence of names, which declares that the members exist and
+constrains nothing. Each member may carry `pub`/`public` and `mut`/`mutable` as a prefix
+on its name; both are opt-in and a bare member is private and immutable (D4.12).
+
+### The three operators, and nothing else
+
+| written | name | what it changes besides A |
+|---|---|---|
+| `A` with `<<: P` | inclusion — A **has** a P | nothing |
+| `A` with `extends: P` | extension — A **is a** P | nothing |
+| `A` with `extends: !ref P` | extended reference — **every P** carries A | every P |
+
+The set is closed at three and no fourth will be added (§6). Two are safe and one
+changes the world, which is why they must not look alike.
+
+`P` is a **path**, spelled the way a filesystem is spelled because the scope tree is the
+directory tree: `../shared/Service`, `peer/Service`, `Service`, `Service.tls.port`.
+Naming is reaching; there is no import to keep in step with a path (D4.12). `!ref` is
+not how a reference is written — a plain path is — it is a declaration that this context
+intends to **modify** the target, legal wherever a path is, and checked (D4.3, D4.12).
+
+### Who may see and who may change
+
+Two orthogonal axes, `private`/`public` and `immutable`/`mutable`, at two granularities:
+on a **scope**, in a header (D6.4), and on a **member**, as a prefix (D4.12). Both are
+closed by default at both granularities, and both compose the same way — over the whole
+path from the root, never node-locally (D6.5). Failure to see is `E0216`; failure to
+write is `E0217`, and it is asked only of a `!ref`, which is the only construct that
+writes at compile time.
+
+### `.yaml` is the other half, and is not this language
+
+Base YAML is the data the engine compiles and runs over. None of the above is
+interpreted in it: `extends:` is a field, `!node` is a tag nobody reads, `//` is text,
+there is no header and there are no member flags (D6.6). It is reached by `imports:`
+and by nothing else, and what it brings is objects rather than definitions (D6.7). The
+one thing shared is `<<`, because that is YAML's and not ours (§1).
+
+### The pipeline
+
+| pass | name | what it does |
+|---|---|---|
+| 1 | `discover` | walk the project, classify each file, read headers, resolve imports, build the scope tree and both axes (D6.1, D6.2, D6.4, D6.7) |
+| 2 | `parse` | the `.yfy` front end (§10), then events into one arena per file, with spans (§§0–3) |
+| 3 | `intern` | symbols, member names with their flags taken off, tags, documents, parents, scopes (D4.12, D7.1) |
+| 4 | `link` | the definition table, every path resolved, every clause validated, the stratified inheritance graph (D4.10, D4.11) |
+| 5 | `check` | cycles, resolved views in precedence order, the epistemic gate, declarations (D4.7, D4.12, D7.3) |
+| 6 | `emit` | the compiled image, and the point at which member gates are **applied** while walking |
+
+Diagnostics accumulate at every pass; no pass stops at the first problem (§4). Pass 6 is
+not written, and is deliberately absent rather than stubbed.

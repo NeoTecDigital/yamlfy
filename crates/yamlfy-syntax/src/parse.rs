@@ -24,11 +24,12 @@
 use std::borrow::Cow;
 
 use saphyr_parser::{Event, Parser, ScanError};
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use crate::ast::Ast;
 use crate::builder::Builder;
 use crate::diagnostic::{Code, Diagnostic, Diagnostics, SeverityMap};
+use crate::front::{self, Dialect};
 use crate::scan;
 use crate::span::{FileId, LoadError, Rebase, SourceFile, SourceMap, Span};
 
@@ -113,6 +114,12 @@ pub fn anchor_names(sources: &SourceMap, file: FileId) -> Vec<Import> {
 ///
 /// Passing an empty slice is exactly [`parse`]: no prelude is synthesised and
 /// not a single position moves.
+///
+/// An [`Import`] whose `name` is not a YAML anchor name is **dropped**, not
+/// bound. This is a public entry point and the prelude is synthesised text, so
+/// a name holding a flow indicator, a space or a line break would splice
+/// documents and anchors of the caller's choosing into this file's arena; no
+/// name read from a parse can contain one. See `is_bindable`.
 #[must_use]
 pub fn parse_with_imports(
     sources: &SourceMap,
@@ -156,8 +163,36 @@ pub fn parse_with_imports(
             }
         }
     }
-    let (ast, diagnostics) = builder.finish();
+    for fault in source.faults() {
+        builder.diagnose(unterminated(source, fault));
+    }
+    let (mut ast, diagnostics) = builder.finish();
+    front::install(&mut ast, source);
     Parsed { ast, diagnostics }
+}
+
+/// `E0104` — a `<?--` block that was never closed.
+///
+/// The cost is **its line and nothing more**. The block's opening line is blank
+/// to the parser and the rest of the file is read exactly as written, which is
+/// the same bargain `E0100`'s recovery makes: report the cause once, and keep
+/// everything that can still be understood.
+fn unterminated(source: &SourceFile, fault: &front::Fault) -> Diagnostic {
+    let span = Span {
+        file: source.id(),
+        start: source.pos_at_char(fault.start),
+        end: source.pos_at_char(fault.end),
+    };
+    Diagnostic::new(
+        Code::UnterminatedBlock,
+        span,
+        "this block is opened and never closed",
+    )
+    .with_note(
+        "a block ends with `-->` for code or `--!>` for documentation; \
+         the rest of this line was not read",
+        None,
+    )
 }
 
 /// Register `path` in `sources` and parse it.
@@ -165,16 +200,20 @@ pub fn parse_with_imports(
 /// Read failures and encoding failures become diagnostics rather than a
 /// `Result`, so a directory walk never has to decide between stopping and
 /// silently skipping a file.
+///
+/// `dialect` is the caller's statement about which language the file is, and is
+/// never inferred from its contents (D6.6).
 pub fn parse_file(
     sources: &mut SourceMap,
     path: impl AsRef<std::path::Path>,
     options: &ParseOptions,
+    dialect: Dialect,
 ) -> Parsed {
     let path = path.as_ref();
-    match sources.load(path) {
+    match sources.load_as(path, dialect) {
         Ok(file) => parse(sources, file, options),
         Err(error) => {
-            let file = sources.add(path, "");
+            let file = sources.add_as(path, "", dialect);
             unreadable(sources, file, &error, options)
         }
     }
@@ -223,18 +262,22 @@ struct Prelude {
 }
 
 impl Prelude {
-    fn new(imports: &[Import]) -> Self {
-        // A nameless anchor is one `E0120` already reported in the exporting
-        // file; it cannot be aliased, so declaring it would only shift every
-        // later import onto the wrong name.
-        let imports: Vec<Import> = imports.iter().filter(|i| !i.name.is_empty()).cloned().collect();
+    fn new(given: &[Import]) -> Self {
+        let mut imports: Vec<Import> = Vec::with_capacity(given.len());
+        for import in given {
+            if is_bindable(&import.name) {
+                imports.push(import.clone());
+            } else if !import.name.is_empty() {
+                warn!(name = %import.name, "not a YAML anchor name; refusing to declare it");
+            }
+        }
         if imports.is_empty() {
             return Prelude { imports, text: String::new(), chars: 0, lines: 0 };
         }
         // One flow sequence of anchored empty scalars, closed with `...` so the
-        // file's own first document may be implicit. Anchor names cannot hold a
-        // flow indicator or a space (`scan::is_name_char`), so nothing here
-        // needs quoting or escaping.
+        // file's own first document may be implicit. Every name here has been
+        // checked against `scan::is_name_char`, so none holds a flow indicator,
+        // a space or a line break and nothing needs quoting or escaping.
         let names: Vec<String> = imports.iter().map(|i| format!("&{} ", i.name)).collect();
         let text = format!("--- [{}]\n...\n", names.join(", "));
         let chars = i64::try_from(text.chars().count()).unwrap_or(i64::MAX);
@@ -250,6 +293,36 @@ impl Prelude {
             lines: i64::from(segment.line_base) - self.lines,
         }
     }
+}
+
+/// Whether the prelude may declare `name`.
+///
+/// This is the crate's public boundary, and it is the only thing standing
+/// between an [`Import`] and the synthetic YAML the prelude splices in. Two
+/// kinds of name are refused.
+///
+/// A **nameless** one is an `E0120` already reported in the exporting file. It
+/// cannot be aliased, so declaring it would only shift every later import onto
+/// the wrong name.
+///
+/// A name holding a character YAML does not allow in an anchor cannot have come
+/// from a parse: [`anchor_names`] and the builder both read a name through
+/// `scan`'s `ns-anchor-char` rule, so every [`Import`] this crate produces
+/// already satisfies this. One that does not was constructed by a caller, and
+/// splicing it in would let that caller write whatever it liked into this
+/// file's arena — `a]\n...\n--- &Evil {}\n...\n[&b` closes the prelude's flow
+/// sequence, ends its document, and adds a document and an anchor of its own,
+/// none of which the file being parsed contains.
+///
+/// It is **dropped rather than diagnosed**, for the same reason the nameless
+/// case is: a diagnostic is a message to the author of a file, and there is no
+/// file and no author behind a name a caller invented — there is not even a
+/// span that means anything, since the `Span` on an `Import` is supplied by the
+/// same caller. Dropping it is also not silent where it matters: an alias to a
+/// name that was not declared still fails, loudly, at the alias, in the file
+/// that wrote it.
+fn is_bindable(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(scan::is_name_char)
 }
 
 enum Resume {

@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: acc::vault
+visibility: private
+imports: [api/api.yfy]
+---
+Audit: !node &Audit
+  extends: !ref ../api/Service
+  token: secret
+Peer: !node &Peer
+  <<: *Audit

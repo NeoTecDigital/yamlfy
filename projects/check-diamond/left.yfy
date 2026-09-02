@@ -1,0 +1,10 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: dia
+imports: [root.yfy]
+---
+Left: !type &Left
+  extends: *Base
+  side: left

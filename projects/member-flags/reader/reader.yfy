@@ -1,0 +1,15 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: mf::reader
+visibility: public
+---
+// `../app/Service` reaches a peer file of the parent directory, and
+// `Service.port` addresses the member the flags were taken off.
+Reader: !node &Reader
+  extends: ../app/Service
+  pub port: !!int 9000
+
+Bindings:
+  port_of: !ref ../app/Service.port

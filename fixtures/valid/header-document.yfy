@@ -4,10 +4,10 @@
 version: 1
 namespace: acme::billing
 visibility: public
-mutability: readonly
-schema: !ref core::schema/invoice
+mutability: immutable
+schema: ../schema/invoice
 --- !node &invoice-001
-customer: !ref acme::crm/cust-42
+customer: !ref ../crm/cust-42
 lines:
   - &line-a {sku: A-1, qty: 2}
   - &line-b {sku: B-2, qty: 1}

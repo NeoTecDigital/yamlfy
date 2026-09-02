@@ -38,6 +38,11 @@ pub enum ScalarStyle {
     Literal,
     /// `>` block.
     Folded,
+    /// A `<?-- … -->` code block: a string carrying the flag that says it is
+    /// to be compiled or executed elsewhere. The parser never produces this —
+    /// [`crate::front`] does, after the parse — and this language never reads
+    /// the contents.
+    Code,
 }
 
 impl ScalarStyle {

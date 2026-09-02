@@ -8,20 +8,11 @@ mod common;
 use yamlfy_core::{intern, FileClass, TagKind};
 use yamlfy_syntax::{Code, NodeId};
 
-fn file_id(project: &yamlfy_core::Project, ends_with: &str) -> yamlfy_syntax::FileId {
-    project
-        .files()
-        .iter()
-        .find(|f| f.relative.ends_with(ends_with))
-        .unwrap_or_else(|| panic!("no file ending `{ends_with}`"))
-        .id
-}
-
 #[test]
 fn a_source_file_imports_a_source_file() {
     let project = common::open_clean("imports-source");
-    let app = file_id(&project, "app.yfy");
-    let net = file_id(&project, "net.yfy");
+    let app = common::file_id(&project, "app.yfy");
+    let net = common::file_id(&project, "net.yfy");
     assert_eq!(project.imports_of(app), [net]);
     assert_eq!(project.imports_of(net), [], "importing is not transitive and net imports nothing");
     assert_eq!(project.file(net).map(|f| f.class), Some(FileClass::Source));
@@ -30,15 +21,15 @@ fn a_source_file_imports_a_source_file() {
 #[test]
 fn importing_one_file_twice_records_it_once() {
     let project = common::open_clean("imports-source");
-    let app = file_id(&project, "app.yfy");
+    let app = common::file_id(&project, "app.yfy");
     assert_eq!(project.imports_of(app).len(), 1, "the fixture names `core/net.yfy` twice");
 }
 
 #[test]
 fn a_source_file_imports_a_data_file() {
     let project = common::open_clean("imports-data");
-    let app = file_id(&project, "app.yfy");
-    let data = file_id(&project, "services.yaml");
+    let app = common::file_id(&project, "app.yfy");
+    let data = common::file_id(&project, "services.yaml");
     assert_eq!(project.imports_of(app), [data]);
     assert_eq!(project.file(data).map(|f| f.class), Some(FileClass::Data));
     assert!(project.file(data).is_some_and(|f| f.header.is_none()), "a data file has no header");
@@ -58,7 +49,7 @@ fn a_data_file_is_never_read_as_yamlfication() {
     // Read as source that is one E0231 and a scope claim; read as data it is
     // inert, which is the whole point of the two classes.
     let project = common::open_clean("nested-namespaces");
-    let edge = file_id(&project, "edge.yaml");
+    let edge = common::file_id(&project, "edge.yaml");
     let file = project.file(edge).expect("edge.yaml");
 
     assert_eq!(file.class, FileClass::Data);
@@ -78,7 +69,7 @@ fn a_data_file_is_never_read_as_yamlfication() {
 fn yamlfication_tags_are_inert_in_a_data_file() {
     let project = common::open_clean("nested-namespaces");
     let interned = intern(&project);
-    let edge = file_id(&project, "edge.yaml");
+    let edge = common::file_id(&project, "edge.yaml");
     let file = project.file(edge).expect("edge.yaml");
 
     let kinds: Vec<TagKind> = (0..file.ast.nodes().len())
@@ -91,7 +82,7 @@ fn yamlfication_tags_are_inert_in_a_data_file() {
     );
     assert_eq!(interned.class_of(edge), Some(FileClass::Data));
 
-    let source = file_id(&project, "service.yfy");
+    let source = common::file_id(&project, "service.yfy");
     let source_kinds: Vec<TagKind> = (0..project
         .file(source)
         .expect("service.yfy")
@@ -107,7 +98,7 @@ fn yamlfication_tags_are_inert_in_a_data_file() {
 fn an_extends_key_in_a_data_file_stays_data() {
     let project = common::open_clean("imports-data");
     let interned = intern(&project);
-    let data = file_id(&project, "services.yaml");
+    let data = common::file_id(&project, "services.yaml");
     let file = project.file(data).expect("services.yaml");
 
     let extends = interned.symbols().get("extends").expect("`extends` is interned as a key");
@@ -128,8 +119,8 @@ fn an_extends_key_in_a_data_file_stays_data() {
 #[test]
 fn an_import_cycle_is_legal_and_recorded() {
     let project = common::open_clean("import-cycle");
-    let a = file_id(&project, "a.yfy");
-    let b = file_id(&project, "b.yfy");
+    let a = common::file_id(&project, "a.yfy");
+    let b = common::file_id(&project, "b.yfy");
 
     assert_eq!(project.imports_of(a), [b]);
     assert_eq!(project.imports_of(b), [a]);
@@ -184,15 +175,15 @@ fn an_import_that_names_nothing_is_reported_once_per_entry() {
         0,
         "an unresolved import is `E0240`, not a header value the language cannot read"
     );
-    let app = file_id(&project, "app.yfy");
+    let app = common::file_id(&project, "app.yfy");
     assert!(project.imports_of(app).is_empty(), "nothing resolved, and nothing invented");
 }
 
 #[test]
 fn importing_does_not_launder_a_private_definition() {
     let project = common::open("import-private");
-    let user = file_id(&project, "user.yfy");
-    let hidden = file_id(&project, "hidden.yfy");
+    let user = common::file_id(&project, "user.yfy");
+    let hidden = common::file_id(&project, "hidden.yfy");
     let rendered = project.diagnostics().render(project.sources());
 
     assert_eq!(project.imports_of(user), [hidden], "the edge is recorded either way");
@@ -251,8 +242,8 @@ fn an_unreachable_import_is_diagnosed_at_the_import_and_not_at_the_alias() {
     // what cannot reach. The alias failure is a consequence and is reported as
     // well; the diagnosis of the cause is what must be present.
     let project = common::open("import-private-alias");
-    let user = file_id(&project, "user.yfy");
-    let hidden = file_id(&project, "hidden.yfy");
+    let user = common::file_id(&project, "user.yfy");
+    let hidden = common::file_id(&project, "hidden.yfy");
     let rendered = project.diagnostics().render(project.sources());
 
     assert!(!project.import_reaches(user, hidden));
@@ -291,8 +282,8 @@ fn a_cross_file_alias_reaches_the_imported_definition() {
     // its first event, so the alias is an ordinary alias and the operation is
     // an ordinary extension — nothing learned to travel.
     let project = common::open_clean("import-alias");
-    let app = file_id(&project, "app.yfy");
-    let net = file_id(&project, "net.yfy");
+    let app = common::file_id(&project, "app.yfy");
+    let net = common::file_id(&project, "net.yfy");
 
     assert_eq!(project.imports_of(app), [net], "the import edge resolves");
     assert!(project.import_reaches(app, net), "and the target is visible");
@@ -322,8 +313,8 @@ fn an_imported_definition_keeps_the_span_it_was_written_at() {
     // wrote it, with that file's line and column — never at the importing file
     // and never at the synthetic text the parser is handed.
     let project = common::open("import-shadowed-locally");
-    let app = file_id(&project, "app.yfy");
-    let net = file_id(&project, "net.yfy");
+    let app = common::file_id(&project, "app.yfy");
+    let net = common::file_id(&project, "net.yfy");
     let rendered = project.diagnostics().render(project.sources());
 
     assert_eq!(common::count(project.diagnostics(), Code::AnchorShadowed), 1, "{rendered}");
@@ -354,9 +345,9 @@ fn two_imports_of_one_name_shadow_in_authored_order() {
     // names `omega` first, so `alpha` is the later import and the one a bare
     // `*Service` denotes. Import order is authored, not discovered (D6.7).
     let project = common::open("import-shadowing");
-    let app = file_id(&project, "app.yfy");
-    let alpha = file_id(&project, "alpha/defs.yfy");
-    let omega = file_id(&project, "omega/defs.yfy");
+    let app = common::file_id(&project, "app.yfy");
+    let alpha = common::file_id(&project, "alpha/defs.yfy");
+    let omega = common::file_id(&project, "omega/defs.yfy");
     let rendered = project.diagnostics().render(project.sources());
 
     assert!(
@@ -389,8 +380,8 @@ fn an_import_does_not_relax_the_document_boundary() {
     // because the import is re-installed at the start of each; `*Api` is not,
     // because `&Api` is an ordinary definition of an earlier document.
     let project = common::open("import-cross-document");
-    let app = file_id(&project, "app.yfy");
-    let net = file_id(&project, "net.yfy");
+    let app = common::file_id(&project, "app.yfy");
+    let net = common::file_id(&project, "net.yfy");
     let rendered = project.diagnostics().render(project.sources());
 
     assert_eq!(common::count(project.diagnostics(), Code::SyntaxError), 0, "{rendered}");
@@ -420,9 +411,9 @@ fn an_import_is_not_transitive() {
     // resolving perfectly well inside `b`.
     let project = common::open("import-not-transitive");
     let (a, b, c) = (
-        file_id(&project, "a/a.yfy"),
-        file_id(&project, "b/b.yfy"),
-        file_id(&project, "c/c.yfy"),
+        common::file_id(&project, "a/a.yfy"),
+        common::file_id(&project, "b/b.yfy"),
+        common::file_id(&project, "c/c.yfy"),
     );
     let rendered = project.diagnostics().render(project.sources());
 

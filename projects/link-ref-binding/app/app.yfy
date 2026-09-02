@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: bind::app
+---
+service: !ref ../core/Service
+myClass: !node &MyClass
+  - a: !ref service.port
+  - b: !ref service.tls.enabled
+  - c: !ref service.absent
+  - d: MyClass

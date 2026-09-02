@@ -86,9 +86,19 @@ fn identical_anchor_names_in_two_documents_are_two_nodes() {
 }
 
 #[test]
-fn merge_cycles_parse_without_error() {
-    // Cyclic merge is a link-pass error (E0212). The parser's job is to hand the
-    // link pass a complete, finite graph to reject.
+fn merge_cycles_parse_without_error_and_are_rejected_by_pass_5() {
+    // Cyclic inheritance is `E0212`, raised by `check` (pass 5) over the
+    // stratified graph `link` (pass 4) builds — not by the parser and not by
+    // `link`. The parser's job is to hand that pass a complete, finite graph to
+    // reject, which is what this asserts: every one of these four parses
+    // cleanly and carries the merge keys the cycle is made of.
+    //
+    // The other half of the contract — that each of them really does raise
+    // `E0212` — cannot be asserted from this crate, which has no project and no
+    // passes. It lives in `yamlfy-core/tests/check.rs`, in
+    // `the_merge_cycle_corpus_is_rejected_here`, over this same list. Splitting
+    // it was the alternative to leaving a test that only says "no error yet",
+    // which passes just as well when nothing ever rejects them.
     for fixture in [
         "cycles/merge-self-cycle.yml",
         "cycles/merge-mutual-cycle.yml",

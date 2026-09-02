@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: mf::vault
+visibility: private
+mutability: mutable
+---
+// A `pub mut` member of a `private immutable` scope is public and mutable
+// *within* that scope. The scope path still gates reach from outside, which is
+// D6.5's composition one level down rather than a second rule.
+Ledger: !node &Ledger
+  pub mut entries: !!int 0

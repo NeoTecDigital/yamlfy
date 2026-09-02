@@ -1,0 +1,27 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: mf::app
+visibility: public
+mutability: mutable
+---
+// A member list may be written as a sequence of names. A bare one is private
+// and immutable; each axis is opted into by a prefix, in either order.
+ClassA: !node &ClassA
+  - private_member
+  - pub public_member
+  - public public_member_two
+  - mutable mutable_member
+  - mut member_two
+  - pub mut public_mutable_member
+  - mutable public mutable_public_member
+
+// The mapping form says the same thing and can also declare a value.
+Service: !type &Service
+  pub port: !!int 8443
+  secret: hidden
+  pub mut handler: <?-- fn(request) { return request.path: 1 } -->
+  "pub literal": quoted, so the prefix is part of the name
+  tags: ["one", "two"]
+  usage: <?-- how the handler is called --!>

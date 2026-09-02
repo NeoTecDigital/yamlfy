@@ -10,7 +10,9 @@
 
 use std::path::PathBuf;
 
-use yamlfy_syntax::{parse_file, Ast, Code, Diagnostics, NodeId, ParseOptions, Parsed, SourceMap};
+use yamlfy_syntax::{
+    parse_file, Ast, Code, Diagnostics, Dialect, NodeId, ParseOptions, Parsed, SourceMap,
+};
 
 /// Root of the fixture corpus.
 pub fn fixtures() -> PathBuf {
@@ -25,8 +27,18 @@ pub fn parse(relative: &str) -> (SourceMap, Parsed) {
 /// Parse a fixture with explicit options.
 pub fn parse_with(relative: &str, options: &ParseOptions) -> (SourceMap, Parsed) {
     let mut sources = SourceMap::new();
-    let parsed = parse_file(&mut sources, fixtures().join(relative), options);
+    let parsed = parse_file(&mut sources, fixtures().join(relative), options, dialect(relative));
     (sources, parsed)
+}
+
+/// The front end a corpus-relative path is read with. `discover` decides this
+/// from configuration; the corpus has no configuration, so it goes by the
+/// extension the two default lists name.
+pub fn dialect(relative: &str) -> Dialect {
+    match relative.ends_with(".yfy") {
+        true => Dialect::Yamlfication,
+        false => Dialect::BaseYaml,
+    }
 }
 
 /// Parse a fixture, asserting it produced no diagnostics at all.

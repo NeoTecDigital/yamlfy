@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: coll
+---
+Service: !node &Service
+  port: 80
+  pub port: 8443

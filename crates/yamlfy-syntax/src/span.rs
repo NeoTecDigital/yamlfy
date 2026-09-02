@@ -11,6 +11,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use crate::front::{self, Block, Dialect, Fault};
+
 /// Handle to a file registered in a [`SourceMap`].
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct FileId(pub u32);
@@ -74,18 +76,38 @@ impl fmt::Display for LoadError {
 }
 
 /// One registered source file.
+///
+/// A `.yfy` file is rewritten before the parser reads it (see [`crate::front`]),
+/// so two texts exist and both are kept. They hold the **same characters in the
+/// same lines** — the rewrite is a substitution — and differ only in which
+/// characters those are, and therefore in how many bytes each one occupies. So
+/// there are two offset tables: a [`Pos`] is resolved against the text **as
+/// written**, because that is what a diagnostic points into, and text is sliced
+/// against what the **parser read**, because that is what its markers index.
+/// For a base YAML file the two are the same text and one table serves both.
 pub struct SourceFile {
     id: FileId,
     path: PathBuf,
-    /// Contents with any leading byte-order mark removed.
+    /// Which language the file was read as.
+    dialect: Dialect,
+    /// The contents the parser read, with any leading byte-order mark removed.
     text: String,
+    /// The contents as written, present only when the pre-pass changed them.
+    written: Option<String>,
     /// Byte offset of every character of `text`, plus a trailing sentinel.
     /// `None` when `text` is ASCII, where the character index *is* the offset.
     char_offsets: Option<Vec<u32>>,
+    /// The same table for [`SourceFile::text`], when the two texts differ in
+    /// their byte layout. `None` means `char_offsets` answers for both.
+    written_offsets: Option<Vec<u32>>,
     /// Bytes stripped from the front of the file (a BOM, or zero).
     byte_base: u32,
     /// Character index at which each line begins.
     line_starts: Vec<u32>,
+    /// Every `<?-- … >` region the pre-pass captured, in source order.
+    blocks: Vec<Block>,
+    /// Every block the pre-pass found unterminated.
+    faults: Vec<Fault>,
 }
 
 impl SourceFile {
@@ -101,10 +123,35 @@ impl SourceFile {
         &self.path
     }
 
-    /// The BOM-stripped contents.
+    /// The contents **as written**, with any byte-order mark removed. Every
+    /// [`Pos::byte`] indexes this string.
     #[must_use]
     pub fn text(&self) -> &str {
+        self.written.as_deref().unwrap_or(&self.text)
+    }
+
+    /// The contents the **parser read**: [`SourceFile::text`] for base YAML,
+    /// and the pre-pass's rewrite for Yamlfication source.
+    #[must_use]
+    pub fn parsed_text(&self) -> &str {
         &self.text
+    }
+
+    /// Which language the file was read as.
+    #[must_use]
+    pub fn dialect(&self) -> Dialect {
+        self.dialect
+    }
+
+    /// Every `<?-- … >` region the file holds, in source order.
+    #[must_use]
+    pub fn blocks(&self) -> &[Block] {
+        &self.blocks
+    }
+
+    /// Every block opened and never closed.
+    pub(crate) fn faults(&self) -> &[Fault] {
+        &self.faults
     }
 
     /// Number of characters in [`SourceFile::text`].
@@ -116,13 +163,19 @@ impl SourceFile {
         }
     }
 
-    /// Byte offset of character `index` within [`SourceFile::text`], clamped to
-    /// the end of the text.
+    /// Byte offset of character `index` within [`SourceFile::parsed_text`],
+    /// clamped to the end of the text.
     #[must_use]
     pub fn char_to_local_byte(&self, index: usize) -> u32 {
-        match &self.char_offsets {
-            Some(o) => o[index.min(o.len() - 1)],
-            None => u32::try_from(index.min(self.text.len())).unwrap_or(u32::MAX),
+        offset(self.char_offsets.as_ref(), &self.text, index)
+    }
+
+    /// Byte offset of character `index` within [`SourceFile::text`] — the file
+    /// as written, which is what a [`Pos`] must point into.
+    fn char_to_written_byte(&self, index: usize) -> u32 {
+        match &self.written_offsets {
+            Some(offsets) => offset(Some(offsets), self.text(), index),
+            None => self.char_to_local_byte(index),
         }
     }
 
@@ -163,10 +216,25 @@ impl SourceFile {
         let line = self.line_starts.partition_point(|&s| s as usize <= index).max(1);
         let start = self.line_starts[line - 1] as usize;
         Pos {
-            byte: self.byte_base + self.char_to_local_byte(index),
+            byte: self.byte_base + self.char_to_written_byte(index),
             line: u32::try_from(line).unwrap_or(u32::MAX),
             col: u32::try_from(index - start).unwrap_or(u32::MAX).saturating_add(1),
         }
+    }
+
+    /// Turn the pre-pass's character ranges into spans of this file.
+    fn locate(&self, raw: &[front::RawBlock]) -> Vec<Block> {
+        raw.iter()
+            .map(|block| Block {
+                kind: block.kind,
+                text: block.text.as_str().into(),
+                span: Span {
+                    file: self.id,
+                    start: self.pos_at_char(block.start),
+                    end: self.pos_at_char(block.end),
+                },
+            })
+            .collect()
     }
 
     /// Convert a raw marker into a [`Pos`], applying `rebase`.
@@ -177,7 +245,7 @@ impl SourceFile {
     pub(crate) fn pos(&self, marker: &saphyr_parser::Marker, rebase: Rebase) -> Pos {
         let index = rebase.char(marker.index());
         Pos {
-            byte: self.byte_base + self.char_to_local_byte(index),
+            byte: self.byte_base + self.char_to_written_byte(index),
             line: rebase.line(marker.line()),
             col: u32::try_from(marker.col()).unwrap_or(u32::MAX).saturating_add(1),
         }
@@ -232,37 +300,74 @@ impl SourceMap {
         Self::default()
     }
 
-    /// Register `text` under `path` without touching the filesystem.
+    /// Register `text` under `path` as base YAML, without touching the
+    /// filesystem.
     pub fn add(&mut self, path: impl Into<PathBuf>, text: impl Into<String>) -> FileId {
+        self.add_as(path, text, Dialect::BaseYaml)
+    }
+
+    /// Register `text` under `path`, read as `dialect`.
+    ///
+    /// The dialect is the caller's to state and is never inferred from the
+    /// contents: the two file classes exist precisely so that no signal inside
+    /// a file has to decide which language it is (D6.6).
+    pub fn add_as(
+        &mut self,
+        path: impl Into<PathBuf>,
+        text: impl Into<String>,
+        dialect: Dialect,
+    ) -> FileId {
         let raw: String = text.into();
-        let (text, byte_base) = match raw.strip_prefix('\u{feff}') {
+        let (written, byte_base) = match raw.strip_prefix('\u{feff}') {
             Some(rest) => (rest.to_owned(), 3),
             None => (raw, 0),
         };
-        let char_offsets = (!text.is_ascii()).then(|| build_char_offsets(&text));
-        let line_starts = build_line_starts(&text);
+        let rewrite = front::preprocess(&written, dialect);
+        let char_offsets = (!rewrite.text.is_ascii()).then(|| build_char_offsets(&rewrite.text));
+        let written_offsets = (rewrite.changed && !written.is_ascii())
+            .then(|| build_char_offsets(&written));
+        let line_starts = build_line_starts(&rewrite.text);
         let id = FileId(u32::try_from(self.files.len()).expect("source map overflow"));
         self.files.push(SourceFile {
             id,
             path: path.into(),
-            text,
+            dialect,
+            text: rewrite.text,
+            written: rewrite.changed.then_some(written),
             char_offsets,
+            written_offsets,
             byte_base,
             line_starts,
+            blocks: Vec::new(),
+            faults: rewrite.faults,
         });
+        let blocks = self.files[id.0 as usize].locate(&rewrite.blocks);
+        self.files[id.0 as usize].blocks = blocks;
         id
     }
 
-    /// Read `path` and register its contents.
+    /// Read `path` and register its contents as base YAML.
     ///
     /// # Errors
     /// Returns [`LoadError`] if the file cannot be read or is not valid UTF-8.
     pub fn load(&mut self, path: impl AsRef<Path>) -> Result<FileId, LoadError> {
+        self.load_as(path, Dialect::BaseYaml)
+    }
+
+    /// Read `path` and register its contents, read as `dialect`.
+    ///
+    /// # Errors
+    /// Returns [`LoadError`] if the file cannot be read or is not valid UTF-8.
+    pub fn load_as(
+        &mut self,
+        path: impl AsRef<Path>,
+        dialect: Dialect,
+    ) -> Result<FileId, LoadError> {
         let path = path.as_ref();
         let bytes = std::fs::read(path).map_err(LoadError::Io)?;
         let text = String::from_utf8(bytes)
             .map_err(|e| LoadError::NotUtf8(e.utf8_error().valid_up_to()))?;
-        Ok(self.add(path, text))
+        Ok(self.add_as(path, text, dialect))
     }
 
     /// Look up a registered file.
@@ -276,6 +381,14 @@ impl SourceMap {
     pub fn location(&self, span: Span) -> String {
         let file = self.file(span.file);
         format!("{}:{}:{}", file.path().display(), span.start.line, span.start.col)
+    }
+}
+
+/// Byte offset of character `index`, clamped to the end of `text`.
+fn offset(offsets: Option<&Vec<u32>>, text: &str, index: usize) -> u32 {
+    match offsets {
+        Some(o) => o[index.min(o.len() - 1)],
+        None => u32::try_from(index.min(text.len())).unwrap_or(u32::MAX),
     }
 }
 

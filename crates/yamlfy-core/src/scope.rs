@@ -11,12 +11,13 @@
 //! directory scope with no special case.
 //!
 //! Each scope carries a *visibility* and a *mutability*, each inherited from the
-//! parent unless a header states it. The root states both: `private` and
-//! `mutable`.
+//! parent unless a header states it. The root states both, and both are the
+//! closed value: **`private` and `immutable`**. Access and mutation are opt-in,
+//! so a scope that says nothing grants nothing.
 //!
 //! Resolution is **path-composed, never node-local**. `visible(n, o)` holds when
 //! every scope on `path(root → n)` is open to `o`; likewise `writable`. Deciding
-//! either axis by looking only at `n` would make a `readonly` or `private`
+//! either axis by looking only at `n` would make an `immutable` or `private`
 //! parent mean nothing, so each scope stores its whole root-to-self path and the
 //! predicates walk it.
 //!
@@ -52,7 +53,7 @@ pub enum Visibility {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mutability {
     /// Writable only from inside the scope.
-    Readonly,
+    Immutable,
     /// Writable from anywhere.
     Mutable,
 }
@@ -95,7 +96,7 @@ impl Mutability {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
-            Mutability::Readonly => "readonly",
+            Mutability::Immutable => "immutable",
             Mutability::Mutable => "mutable",
         }
     }
@@ -104,7 +105,7 @@ impl Mutability {
     #[must_use]
     pub fn parse(text: &str) -> Option<Self> {
         match text.trim() {
-            "readonly" => Some(Mutability::Readonly),
+            "immutable" => Some(Mutability::Immutable),
             "mutable" => Some(Mutability::Mutable),
             _ => None,
         }
@@ -119,7 +120,7 @@ impl Mutability {
     /// Every legal spelling, for diagnostics.
     #[must_use]
     pub fn choices() -> &'static str {
-        "readonly, mutable"
+        "immutable, mutable"
     }
 }
 
@@ -161,6 +162,10 @@ pub struct Scope {
     /// `None` means the scope inherited its visibility rather than stating it,
     /// and is what lets a diagnostic say which of the two happened.
     pub visibility_span: Option<Span>,
+    /// Where the surviving `mutability:` claim was written, when one was. The
+    /// mutability axis has a diagnostic of its own now (`E0217`), so it needs
+    /// the same span the visibility axis has always carried.
+    pub mutability_span: Option<Span>,
     /// Visibility after inheritance.
     pub visibility: Visibility,
     /// Mutability after inheritance.
@@ -257,6 +262,20 @@ impl ScopeTree {
         self.closed(target, observer, |scope| scope.visibility.is_open())
     }
 
+    /// The outermost scope on `target`'s path that shuts `observer` out on the
+    /// mutability axis, or `None` when `target` is writable.
+    ///
+    /// The exact analogue of [`ScopeTree::blocked_by`], and deliberately the
+    /// same walk: an extended reference is a **write performed at compile
+    /// time**, so it asks the mutability axis the question `E0216` asks the
+    /// visibility axis, and the two must never be able to disagree about who
+    /// blocked what. Outermost for the same reason — opening any scope below
+    /// the outermost gate changes nothing.
+    #[must_use]
+    pub fn not_writable_by(&self, target: ScopeId, observer: ScopeId) -> Option<ScopeId> {
+        self.closed(target, observer, |scope| scope.mutability.is_open())
+    }
+
     /// The first scope on `target`'s path that `open` rejects for `observer`.
     /// One implementation of the composition rule, so the predicates and the
     /// diagnostics can never disagree about who blocked what.
@@ -299,8 +318,9 @@ impl ScopeTree {
             namespace_span: None,
             declared: Declared::default(),
             visibility_span: None,
+            mutability_span: None,
             visibility: Visibility::Private,
-            mutability: Mutability::Mutable,
+            mutability: Mutability::Immutable,
             path,
             declared_by: Vec::new(),
         });
@@ -325,7 +345,7 @@ impl ScopeTree {
             let inherited = self.scopes[index]
                 .parent
                 .map(|p| (self.scopes[p.index()].visibility, self.scopes[p.index()].mutability))
-                .unwrap_or((Visibility::Private, Mutability::Mutable));
+                .unwrap_or((Visibility::Private, Mutability::Immutable));
             let scope = &mut self.scopes[index];
             scope.visibility = scope.declared.visibility.unwrap_or(inherited.0);
             scope.mutability = scope.declared.mutability.unwrap_or(inherited.1);

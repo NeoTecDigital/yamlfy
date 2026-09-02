@@ -4,7 +4,7 @@
 version: 1
 namespace: base
 visibility: public
-mutability: readonly
+mutability: immutable
 --- !node &base
 port: 1
 region: east

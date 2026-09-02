@@ -80,6 +80,18 @@ pub fn scope_by(project: &Project, qualified: &str) -> ScopeId {
         .id
 }
 
+/// The file whose relative path ends with `ends_with`. Test fixtures name a
+/// file by its own name and its directory, never by rank, so a fixture can gain
+/// a file without renumbering every assertion about it.
+pub fn file_id(project: &Project, ends_with: &str) -> FileId {
+    project
+        .files()
+        .iter()
+        .find(|f| f.relative.ends_with(ends_with))
+        .unwrap_or_else(|| panic!("no file ending `{ends_with}`"))
+        .id
+}
+
 /// The node reached from `document`'s root by following `path` key by key.
 pub fn entry_at(project: &Project, file: FileId, document: usize, path: &[&str]) -> NodeId {
     let ast = &project.file(file).unwrap_or_else(|| panic!("no file {file:?}")).ast;
@@ -120,4 +132,145 @@ pub fn imported_names(project: &Project, file: FileId) -> Vec<String> {
         }
     }
     out
+}
+
+/// A project taken all the way through pass 5, and the questions a pass-5 test
+/// asks of one. Kept here rather than in one test binary because the check-pass
+/// assertions split across two files and a second copy would drift.
+pub mod pipeline {
+    use yamlfy_core::check::{check, Checked};
+    use yamlfy_core::intern::{intern, Interned};
+    use yamlfy_core::link::{link, Linked};
+    use yamlfy_core::{Project, Symbol};
+    use yamlfy_syntax::{Code, FileId, NodeId};
+
+    /// A project taken all the way through pass 5.
+    pub struct Compiled {
+        pub project: Project,
+        pub interned: Interned,
+        pub linked: Linked,
+        pub checked: Checked,
+    }
+
+    impl Compiled {
+        pub fn rendered(&self) -> String {
+            self.checked.diagnostics().render(self.project.sources())
+        }
+
+        pub fn count(&self, code: Code) -> usize {
+            super::count(self.checked.diagnostics(), code)
+        }
+
+        pub fn file(&self, ends_with: &str) -> FileId {
+            super::file_id(&self.project, ends_with)
+        }
+
+        /// The node an anchor names, wherever in the project it is written.
+        pub fn node(&self, file: &str, anchor: &str) -> (FileId, NodeId) {
+            let id = self.file(file);
+            (id, super::declaration(&self.project, id, anchor))
+        }
+
+        pub fn symbol(&self, text: &str) -> Symbol {
+            self.interned.symbols().get(text).unwrap_or_else(|| panic!("`{text}` is never written"))
+        }
+
+        /// The keys of a node's resolved view, highest precedence first.
+        pub fn resolved_keys(&self, at: (FileId, NodeId)) -> Vec<String> {
+            self.view_keys(self.checked.resolved(at.0, at.1))
+        }
+
+        /// The keys a node declares.
+        pub fn declared_keys(&self, at: (FileId, NodeId)) -> Vec<String> {
+            self.view_keys(self.checked.declared(at.0, at.1))
+        }
+
+        pub fn view_keys(&self, view: Option<&yamlfy_core::check::View>) -> Vec<String> {
+            view.expect("a view")
+                .fields()
+                .iter()
+                .map(|field| {
+                    self.interned.symbols().resolve(field.name).unwrap_or_default().to_owned()
+                })
+                .collect()
+        }
+
+        /// The text a node's resolved view ends up holding for a key.
+        pub fn value_of(&self, at: (FileId, NodeId), key: &str) -> String {
+            let field = self
+                .checked
+                .resolved(at.0, at.1)
+                .expect("a view")
+                .get(self.symbol(key))
+                .unwrap_or_else(|| panic!("no key `{key}`"));
+            let ast = &self.project.file(field.value.0).expect("file").ast;
+            ast.scalar(field.value.1).map_or_else(String::new, |s| s.value.to_string())
+        }
+    }
+
+    pub fn through(project: Project) -> Compiled {
+        let interned = intern(&project);
+        let linked = link(&project, &interned);
+        let checked = check(&project, &interned, &linked);
+        Compiled { project, interned, linked, checked }
+    }
+
+    /// Discover, intern, link and check a project fixture, asserting `discover`
+    /// found nothing — so every diagnostic in a test below belongs to pass 4 or 5.
+    pub fn open(name: &str) -> Compiled {
+        through(super::open_clean(name))
+    }
+
+    /// The same for a single-file fixture, which is a project of one file.
+    pub fn open_at(relative: &str) -> Compiled {
+        through(super::open_at(relative))
+    }
+}
+
+/// A scratch project tree that removes itself. Built in code rather than
+/// checked in because the thing under test is a *symlink*, which a source
+/// corpus cannot carry portably.
+#[cfg(unix)]
+pub mod scratch {
+    use std::path::{Path, PathBuf};
+
+    pub struct Tree(PathBuf);
+
+    impl Tree {
+        pub fn new(name: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            path.push(format!("yamlfy-{name}-{unique}"));
+            std::fs::create_dir_all(&path).expect("scratch tree");
+            Tree(path)
+        }
+
+        pub fn path(&self) -> &Path {
+            &self.0
+        }
+
+        pub fn write(&self, relative: &str, body: &str) {
+            let path = self.0.join(relative);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("scratch directory");
+            }
+            std::fs::write(path, body).expect("scratch file");
+        }
+
+        pub fn link(&self, target: &str, link: &str) {
+            let path = self.0.join(link);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("scratch directory");
+            }
+            std::os::unix::fs::symlink(self.0.join(target), path).expect("scratch symlink");
+        }
+    }
+
+    impl Drop for Tree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 }

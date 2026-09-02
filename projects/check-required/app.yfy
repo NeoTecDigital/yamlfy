@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: req
+---
+Service: !type &Service
+  port: !!int
+  host: !!str localhost
+  region:
+Api: !node &Api
+  extends: *Service
+  region: eu

@@ -12,7 +12,7 @@
 //! different source. Every ordered pair of scopes is checked, which is what
 //! makes it a test of composition in both directions rather than of one lucky
 //! vantage point: a bug that evaluates an axis node-locally passes any
-//! single-scope assertion and still gets a `private` or `readonly` parent wrong.
+//! single-scope assertion and still gets a `private` or `immutable` parent wrong.
 
 mod common;
 
@@ -129,14 +129,14 @@ fn the_blocking_scope_is_the_outermost_gate_and_not_the_target() {
 }
 
 #[test]
-fn a_mutable_scope_inside_a_readonly_one_is_not_writable_from_outside() {
+fn a_mutable_scope_inside_an_immutable_one_is_not_writable_from_outside() {
     let project = common::open_clean("scope-matrix");
     let target = id(&project, "scope-matrix/pub-ro/pub-mu");
     let outside = id(&project, "scope-matrix/outside");
     let parent = id(&project, "scope-matrix/pub-ro");
 
     assert!(project.scopes().visible(target, outside), "visibility is the other axis");
-    assert!(!project.scopes().writable(target, outside), "a readonly parent must mean something");
+    assert!(!project.scopes().writable(target, outside), "an immutable parent must mean something");
     assert!(project.scopes().writable(target, parent));
 }
 
@@ -144,11 +144,11 @@ fn a_mutable_scope_inside_a_readonly_one_is_not_writable_from_outside() {
 fn the_axes_are_orthogonal() {
     let project = common::open_clean("scope-matrix");
     let outside = id(&project, "scope-matrix/outside");
-    let public_readonly = id(&project, "scope-matrix/pub-ro");
+    let public_immutable = id(&project, "scope-matrix/pub-ro");
     let private_mutable = id(&project, "scope-matrix/pri-mu");
 
-    assert!(project.scopes().visible(public_readonly, outside));
-    assert!(!project.scopes().writable(public_readonly, outside));
+    assert!(project.scopes().visible(public_immutable, outside));
+    assert!(!project.scopes().writable(public_immutable, outside));
     assert!(!project.scopes().visible(private_mutable, outside));
     assert!(project.scopes().writable(private_mutable, outside));
 }
@@ -185,4 +185,87 @@ fn an_unknown_scope_answers_no_rather_than_panicking() {
     let missing = ScopeId(9_999);
     assert!(!project.scopes().visible(missing, root));
     assert!(!project.scopes().writable(root, missing));
+}
+
+/// `projects/nested-gates/` is three levels deep and puts **two** closed gates
+/// on one path, at different depths:
+///
+/// ```text
+/// gates/                     private   (the root, which encloses every observer)
+///   outside/                 public    <- the observer
+///   outer/                   private   <- outermost gate
+///     middle/                private   <- innermost gate
+///       inner/               public    <- the target
+/// ```
+///
+/// `scope-matrix` cannot express this. It is two levels below its root, so a
+/// blocked path there has exactly one gate on it and "outermost" and
+/// "innermost" name the same scope — which is why every assertion about
+/// [`ScopeTree::blocked_by`] passed against an implementation that answered
+/// either. Two gates at different depths is the smallest shape that tells them
+/// apart, and it is not a contrived one: it is a package private to its
+/// subsystem inside a subsystem private to the project.
+#[test]
+fn two_gates_on_one_path_are_reported_by_the_outermost() {
+    let project = common::open("nested-gates");
+    let outside = id(&project, "nested-gates/outside");
+    let outer = id(&project, "nested-gates/outer");
+    let middle = id(&project, "nested-gates/outer/middle");
+    let inner = id(&project, "nested-gates/outer/middle/inner");
+
+    // The fixture is only discriminating while both gates are shut. Asserted
+    // rather than assumed, so editing a `visibility:` degrades the test loudly
+    // instead of quietly making it pass either way again.
+    let gates: Vec<ScopeId> = project
+        .scopes()
+        .path(inner)
+        .iter()
+        .copied()
+        .filter(|s| {
+            let scope = project.scopes().get(*s).expect("scope on the path");
+            scope.visibility == Visibility::Private && !project.scopes().encloses(*s, outside)
+        })
+        .collect();
+    assert_eq!(gates, [outer, middle], "two closed gates, outermost first");
+
+    assert_eq!(
+        project.scopes().blocked_by(inner, outside),
+        Some(outer),
+        "the outermost gate is the one that has to open first; opening `middle` changes nothing"
+    );
+    assert_eq!(project.scopes().blocked_by(middle, outside), Some(outer), "and likewise for it");
+    assert_eq!(
+        project.scopes().blocked_by(inner, middle),
+        None,
+        "an observer inside every gate is stopped by none of them"
+    );
+    assert_eq!(
+        project.scopes().blocked_by(inner, outer),
+        Some(middle),
+        "an observer inside only the outer gate is stopped by the inner one, which is then \
+         the outermost gate still shut to it"
+    );
+}
+
+/// The same property, read off the diagnostic rather than the predicate:
+/// `E0241`'s note names the scope an author has to change, and naming the inner
+/// one would send them to edit a marking that is already correct.
+#[test]
+fn e0241_names_the_outermost_gate_in_its_note() {
+    let project = common::open("nested-gates");
+    let rendered = project.diagnostics().render(project.sources());
+
+    assert_eq!(
+        common::count(project.diagnostics(), yamlfy_syntax::Code::ImportNotVisible),
+        1,
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("outer/outer.yfy:6:13 `nested-gates/outer` is declared `private`"),
+        "the note points at the outermost gate's own `visibility:`:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("`nested-gates/outer/middle` is declared"),
+        "and never at the inner gate, which opening would not help:\n{rendered}"
+    );
 }

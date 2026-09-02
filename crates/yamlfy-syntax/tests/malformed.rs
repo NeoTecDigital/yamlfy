@@ -87,6 +87,7 @@ fn a_missing_file_is_a_diagnostic_not_a_crash() {
         &mut sources,
         common::fixtures().join("no/such/file.yml"),
         &ParseOptions::default(),
+        yamlfy_syntax::Dialect::BaseYaml,
     );
     assert_eq!(count(&parsed.diagnostics, Code::IoError), 1);
     assert!(parsed.diagnostics.render(&sources).contains("file.yml:1:1"));

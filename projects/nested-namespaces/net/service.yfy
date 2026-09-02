@@ -3,7 +3,7 @@
 --- !yamlfy/header
 version: 1
 namespace: acme::net
-mutability: readonly
+mutability: immutable
 --- !node &service
 port: 443
 region: east

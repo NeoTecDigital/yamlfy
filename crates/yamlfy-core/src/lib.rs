@@ -22,9 +22,15 @@
 //!   classify tags; build the node→document and node→parent maps; record each
 //!   node's resolved scope path.
 //!
-//! Pass 2 is `yamlfy_syntax::parse`, driven by pass 1. Passes 4 to 6 — `link`,
-//! `check` and `emit` — are not written yet and are deliberately absent rather
-//! than stubbed.
+//! * [`link`] — pass 4. Build the definition table, walk every path,
+//!   validate inheritance-clause operands and build the stratified inheritance
+//!   graph pass 5 runs SCC over.
+//! * [`check`] — pass 5. Detect cyclic inheritance, resolve inheritance into a
+//!   view per node, and validate every concrete node against its abstract
+//!   ancestors' declarations.
+//!
+//! Pass 2 is `yamlfy_syntax::parse`, driven by pass 1. Pass 6 — `emit` — is not
+//! written yet and is deliberately absent rather than stubbed.
 //!
 //! # Example
 //!
@@ -53,9 +59,12 @@ mod imports;
 mod reserved;
 mod walk;
 
+pub mod check;
 pub mod discover;
 pub mod header;
 pub mod intern;
+pub mod link;
+pub mod member;
 pub mod order;
 pub mod scope;
 pub mod symbol;
@@ -66,7 +75,8 @@ pub use discover::{
     DEFAULT_DATA_EXTENSIONS, DEFAULT_SOURCE_EXTENSIONS,
 };
 pub use header::Header;
-pub use intern::{intern, FileIndex, Interned};
+pub use intern::{intern, FileIndex, Interned, Member};
+pub use member::MemberFlags;
 pub use order::NodeOrder;
 pub use scope::{Declared, Mutability, Scope, ScopeId, ScopeKind, ScopeTree, Visibility};
 pub use symbol::{Symbol, SymbolTable};

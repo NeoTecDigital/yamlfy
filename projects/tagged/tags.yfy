@@ -7,7 +7,7 @@ namespace: tagged
 port: !!int
 region:
 --- !node &Api
-extends: !ref tagged::Service
+extends: !ref Service
 port: 8443
 owner: !edge {to: *Api, kind: owns}
 verbatim: !<node> {port: 1}

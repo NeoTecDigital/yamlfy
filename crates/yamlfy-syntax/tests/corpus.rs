@@ -9,11 +9,16 @@
 //! files to 3,539; the `.gitignore` guard now catches that, and this test is the
 //! cheaper detector that fails loudly the moment the count moves.
 //!
-//! The corpus holds both file classes. That is deliberate and it changes
-//! nothing here: **the parser is shared.** Classification into Yamlfication
-//! source and base YAML happens in `yamlfy-core::discover`, not in this crate,
-//! and every `.yfy` construct so far is still valid YAML — so the front end
-//! parses both identically and `all_fixtures()` keeps sweeping both.
+//! The corpus holds both file classes, and since the `.yfy` front end landed
+//! that is no longer cosmetic: a `.yfy` is read through the pre-pass and a
+//! `.yaml` is not (D6.6). Which one a fixture gets is decided by
+//! `common::dialect`, from the extension, because the corpus has no project and
+//! therefore no configured extension lists.
+//!
+//! No fixture here writes `//`, `<?-- --!>` or `<?-- -->` — the front end's own
+//! tests do — so the pre-pass is the identity over every one of them, which
+//! `tests/front.rs` asserts file by file. That is what lets the corpus-wide
+//! sweeps keep treating the two classes alike.
 //!
 //! The counts are asserted per class rather than in total, so a stray file
 //! landing in either one is still caught.

@@ -4,7 +4,7 @@
 version: 1
 namespace: m::pub-ro
 visibility: public
-mutability: readonly
+mutability: immutable
 --- !node &p-pub-ro
 port: 1
 region: east

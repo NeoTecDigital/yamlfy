@@ -16,15 +16,6 @@ mod common;
 
 use yamlfy_syntax::Code;
 
-fn file_id(project: &yamlfy_core::Project, ends_with: &str) -> yamlfy_syntax::FileId {
-    project
-        .files()
-        .iter()
-        .find(|f| f.relative.ends_with(ends_with))
-        .unwrap_or_else(|| panic!("no file ending `{ends_with}`"))
-        .id
-}
-
 #[test]
 fn a_cycle_binds_when_every_anchor_is_written_after_its_alias() {
     // The shape a cycle cannot survive by luck. Neither document root is
@@ -34,11 +25,11 @@ fn a_cycle_binds_when_every_anchor_is_written_after_its_alias() {
     // has nothing to install and never starts. The fixture holds one 2-cycle
     // (`a`, `b`) and one 3-cycle (`x`, `y`, `z`), and both compile clean.
     let project = common::open_clean("import-cycle-late-anchor");
-    let (a, b) = (file_id(&project, "a/a.yfy"), file_id(&project, "b/b.yfy"));
+    let (a, b) = (common::file_id(&project, "a/a.yfy"), common::file_id(&project, "b/b.yfy"));
     let (x, y, z) = (
-        file_id(&project, "x/x.yfy"),
-        file_id(&project, "y/y.yfy"),
-        file_id(&project, "z/z.yfy"),
+        common::file_id(&project, "x/x.yfy"),
+        common::file_id(&project, "y/y.yfy"),
+        common::file_id(&project, "z/z.yfy"),
     );
 
     assert_eq!(project.import_cycles(), [vec![a, b], vec![x, y, z]], "both are recorded");
@@ -64,8 +55,8 @@ fn an_import_survives_a_local_definition_of_the_same_name_in_an_earlier_document
     // document boundary. Reporting `E0130` for it would make an import stop
     // working because of a name used in a document that has already ended.
     let project = common::open("import-reinstalled-after-shadow");
-    let app = file_id(&project, "app.yfy");
-    let lib = file_id(&project, "lib/l.yfy");
+    let app = common::file_id(&project, "app.yfy");
+    let lib = common::file_id(&project, "lib/l.yfy");
     let rendered = project.diagnostics().render(project.sources());
     let ast = &project.file(app).expect("app").ast;
 

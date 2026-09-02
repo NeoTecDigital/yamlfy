@@ -214,3 +214,80 @@ fn passing_no_imports_is_exactly_an_ordinary_parse() {
     assert_eq!(a.ast.dump(), b.ast.dump());
     assert!(b.diagnostics.is_empty());
 }
+
+/// The exact shape a hostile `Import::name` takes: it closes the prelude's flow
+/// sequence, ends its document, opens one of its own carrying an anchor, ends
+/// that, and reopens a flow sequence so the prelude's own `]` still closes
+/// something. Spliced in unchecked it is well-formed YAML, so nothing downstream
+/// would ever notice.
+const INJECTION: &str = "a]\n...\n--- &Evil {}\n...\n[&b";
+
+/// Everything a caller could learn about a parse of this file, so the two runs
+/// can be compared whole rather than one property at a time.
+fn shape(parsed: &yamlfy_syntax::Parsed) -> (usize, usize, Vec<String>, Vec<Span>) {
+    (
+        parsed.ast.documents().len(),
+        parsed.ast.nodes().len(),
+        parsed.ast.anchors().defs().iter().map(|d| d.name.to_string()).collect(),
+        parsed.ast.nodes().iter().map(|n| n.span).collect(),
+    )
+}
+
+#[test]
+fn an_import_name_that_is_not_an_anchor_name_cannot_splice_a_document() {
+    // `parse_with_imports` is `pub`. No caller in this workspace can reach it
+    // with a name like this — every `Import` the crate builds is read through
+    // `scan`'s `ns-anchor-char` rule — but the crate does not get to assume its
+    // callers, and the prelude is synthesised text.
+    let mut sources = SourceMap::new();
+    let app = sources.add("app.yfy", "--- !node &Api\nport: 8443\n");
+    let options = ParseOptions::default();
+    let here = Span::empty(app, sources.file(app).pos_at_char(0));
+
+    let clean = parse(&sources, app, &options);
+    let hostile = [Import { name: INJECTION.into(), span: here }];
+    let parsed = parse_with_imports(&sources, app, &options, &hostile);
+
+    assert_eq!(
+        shape(&parsed),
+        shape(&clean),
+        "the arena is the file's own: no phantom document, no phantom node, no `&Evil`, \
+         and not one span moved"
+    );
+    assert!(
+        parsed.ast.anchors().defs().iter().all(|d| !d.is_imported()),
+        "and nothing was declared, so nothing can alias it"
+    );
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "the file itself is fine; the name is the caller's mistake, not the author's:\n{}",
+        parsed.diagnostics.render(&sources)
+    );
+}
+
+#[test]
+fn a_hostile_import_name_does_not_cost_the_legal_ones_beside_it() {
+    // The over-broad fix — refuse the whole prelude when any name is bad — is
+    // as wrong as no fix: it would drop bindings the exporting files really do
+    // define, and report as an unknown anchor at each alias.
+    let (sources, app, mut imports) = two_files(IMPORTING);
+    let here = imports[0].span;
+    imports.insert(0, Import { name: INJECTION.into(), span: here });
+    imports.push(Import { name: "".into(), span: here });
+
+    let parsed = parse_with_imports(&sources, app, &ParseOptions::default(), &imports);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "`*Service` still binds:\n{}",
+        parsed.diagnostics.render(&sources)
+    );
+    let names: Vec<String> = parsed
+        .ast
+        .anchors()
+        .defs()
+        .iter()
+        .filter(|d| d.is_imported())
+        .map(|d| d.name.to_string())
+        .collect();
+    assert_eq!(names, ["Service"], "exactly the one bindable name, and it keeps its position");
+}

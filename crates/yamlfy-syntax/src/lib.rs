@@ -20,6 +20,15 @@
 //!   and a one-based column, so every diagnostic can print `file:line:col`.
 //! * Diagnostics accumulate. Nothing returns on the first problem.
 //!
+//! # Two dialects, one parser
+//!
+//! `.yfy` is not YAML. `//`, `<?-- … --!>` and `<?-- … -->` are constructs a
+//! YAML parser rejects, so a [`Dialect::Yamlfication`] file is rewritten by
+//! [`front`] before the parser reads it — character for character, so that
+//! every span still points at the file the author wrote. A
+//! [`Dialect::BaseYaml`] file gets none of that and reaches the parser exactly
+//! as written (D6.6).
+//!
 //! # One file, and one exception
 //!
 //! An [`ast::Ast`] is one file's arena and stays one. The single thing that
@@ -52,6 +61,7 @@
 
 pub mod anchor;
 pub mod ast;
+pub mod front;
 pub mod diagnostic;
 pub mod mapping;
 pub mod parse;
@@ -64,6 +74,7 @@ mod walk;
 pub use anchor::{AnchorDef, AnchorId, AnchorTable, Source};
 pub use ast::{AliasRef, Ast, Document, Entry, Node, NodeId, NodeKind, Scalar, ScalarStyle, Tag};
 pub use diagnostic::{Code, Diagnostic, Diagnostics, Severity, SeverityMap};
+pub use front::{Block, BlockKind, Dialect};
 pub use mapping::{is_merge_key, MERGE_KEY};
 pub use parse::{
     anchor_names, parse, parse_file, parse_with_imports, Import, ParseOptions, Parsed,

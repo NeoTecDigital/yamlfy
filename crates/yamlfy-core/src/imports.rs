@@ -21,10 +21,28 @@
 //! # Paths
 //!
 //! An import is resolved **against the project root** and must name a file the
-//! project already discovered. Resolution is by canonical identity, reusing the
-//! same identity the walk deduplicates on, so a file reached through a symlink
-//! and a file named directly are the same import and are never registered
-//! twice. A path that leaves the project, or names something the extension
+//! project already discovered.
+//!
+//! **Membership is decided by discovery, not by where the bytes live.** A file
+//! the walk found, ranked and gave a scope to is a member of the project by
+//! every other measure, so its own relative path — the path that discovered it
+//! — always names it. That is what makes `imports: [vendor.yfy]` work when
+//! `vendor.yfy` is a symlink to a file outside the tree, which is the ordinary
+//! way a vendored directory is brought in. Deciding membership by canonical
+//! identity instead resolves the link first and then rejects the result for
+//! being outside the root, so a file that is discovered, ranked and scoped can
+//! never be imported — and D6.2 already refuses to let a symlink's target
+//! decide anything, for the same reason.
+//!
+//! A path that does *not* name a discovered file is then resolved by canonical
+//! identity, reusing the identity the walk deduplicates on, so a route through
+//! a symlinked directory reaches the same file the walk kept. That second
+//! lookup is guarded: the path must stay inside the project. The guard is not
+//! redundant with the first, because the symlinked-in file's identity *is* in
+//! the table — without it, `../outside/vendor.yfy` would resolve to the very
+//! file `vendor.yfy` names, importing a file by a path that leaves the project.
+//!
+//! A path that satisfies neither, or names something the extension
 //! classification ignored, resolves to nothing and is `E0240`.
 //!
 //! # Reach, and where the diagnostic points
@@ -78,7 +96,8 @@
 //! human can both see the shape.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+// `Component` is taken here by the import graph's own SCC type, below.
+use std::path::{Component as PathPart, Path, PathBuf};
 
 use tracing::debug;
 use yamlfy_syntax::{Code, Diagnostic, Diagnostics, FileId, Span};
@@ -101,6 +120,11 @@ pub(crate) fn resolve(
     let resolver = Resolver {
         root,
         root_identity: walk::identity(root),
+        by_relative: candidates
+            .iter()
+            .zip(files.iter())
+            .map(|(candidate, file)| (candidate.relative.as_path(), file.id))
+            .collect(),
         by_identity: candidates
             .iter()
             .zip(files.iter())
@@ -122,6 +146,9 @@ pub(crate) fn resolve(
 struct Resolver<'a> {
     root: &'a Path,
     root_identity: PathBuf,
+    /// Every discovered file under the root-relative path the walk found it by.
+    /// This is what membership means, so it is consulted first.
+    by_relative: HashMap<&'a Path, FileId>,
     by_identity: HashMap<&'a PathBuf, FileId>,
     scope_of: HashMap<FileId, ScopeId>,
     scopes: &'a ScopeTree,
@@ -157,9 +184,29 @@ impl Resolver<'_> {
 
     /// Find the file an import names, or `None`.
     fn lookup(&self, text: &str) -> Option<FileId> {
-        let candidate = self.root.join(text);
-        let identity = walk::identity(&candidate);
+        self.discovered_as(text).or_else(|| self.by_real_path(text))
+    }
+
+    /// The file the walk filed under this exact relative path.
+    ///
+    /// Discovery decides membership, so this answers before the filesystem is
+    /// consulted at all — a discovered file is importable by the path that
+    /// discovered it whatever a symlink on that path points at.
+    fn discovered_as(&self, text: &str) -> Option<FileId> {
+        let relative = within_root(text)?;
+        self.by_relative.get(relative.as_path()).copied()
+    }
+
+    /// The discovered file whose real identity this path resolves to, provided
+    /// the path itself stays inside the project.
+    ///
+    /// This reaches a file named by some *other* route through the project —
+    /// a symlinked directory, say — and the guard is what stops it reaching a
+    /// symlinked-in file by the outside path its link points at.
+    fn by_real_path(&self, text: &str) -> Option<FileId> {
+        let identity = walk::identity(&self.root.join(text));
         if !identity.starts_with(&self.root_identity) {
+            debug!(import = %text, "resolves outside the project root");
             return None;
         }
         self.by_identity.get(&identity).copied()
@@ -170,6 +217,27 @@ impl Resolver<'_> {
         let target = self.scope_of.get(&imported).copied()?;
         self.scopes.blocked_by(target, importer)
     }
+}
+
+/// An import path as a root-relative one, with `.` and `..` resolved
+/// **lexically** — the filesystem is deliberately not consulted, because the
+/// question is which discovered file the author named, and discovery keys files
+/// by exactly this path.
+///
+/// `None` when the path is absolute or climbs above the root, neither of which
+/// can be a discovered file's relative path. Both fall through to the identity
+/// lookup, which decides them on the filesystem's terms.
+fn within_root(text: &str) -> Option<PathBuf> {
+    let mut relative = PathBuf::new();
+    for part in Path::new(text).components() {
+        match part {
+            PathPart::Normal(name) => relative.push(name),
+            PathPart::CurDir => {}
+            PathPart::ParentDir if relative.pop() => {}
+            PathPart::ParentDir | PathPart::RootDir | PathPart::Prefix(_) => return None,
+        }
+    }
+    (!relative.as_os_str().is_empty()).then_some(relative)
 }
 
 fn unresolved(text: &str, span: Span) -> Diagnostic {

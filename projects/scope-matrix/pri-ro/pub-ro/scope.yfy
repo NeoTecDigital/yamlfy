@@ -4,7 +4,7 @@
 version: 1
 namespace: m::pri-ro::pub-ro
 visibility: public
-mutability: readonly
+mutability: immutable
 --- !node &c-pri-ro-pub-ro
 port: 2
 region: east

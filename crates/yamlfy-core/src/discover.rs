@@ -31,7 +31,8 @@ use std::path::{Path, PathBuf};
 
 use tracing::{debug, info};
 use yamlfy_syntax::{
-    parse_file, Ast, Code, Diagnostic, Diagnostics, FileId, ParseOptions, SourceMap, Span,
+    parse_file, Ast, Code, Diagnostic, Diagnostics, Dialect, FileId, ParseOptions, SourceMap,
+    Span,
 };
 
 use crate::bind;
@@ -66,6 +67,16 @@ impl FileClass {
         match self {
             FileClass::Source => "source",
             FileClass::Data => "data",
+        }
+    }
+
+    /// The front end this class is read with. Source gets the `.yfy` pre-pass
+    /// (`//`, `<?-- --!>`, `<?-- -->`); data reaches the parser as written.
+    #[must_use]
+    pub fn dialect(self) -> Dialect {
+        match self {
+            FileClass::Source => Dialect::Yamlfication,
+            FileClass::Data => Dialect::BaseYaml,
         }
     }
 }
@@ -418,7 +429,8 @@ fn load(
     let mut files = Vec::with_capacity(candidates.len());
     let mut per_file = Vec::with_capacity(candidates.len());
     for (rank, candidate) in candidates.iter().enumerate() {
-        let parsed = parse_file(sources, &candidate.path, &options.parse);
+        let parsed =
+            parse_file(sources, &candidate.path, &options.parse, candidate.class.dialect());
         let mut found = parsed.diagnostics;
         // A data file has no header. Reading one would make `!yamlfy/header`
         // meaningful in base YAML, which is exactly what the two classes exist

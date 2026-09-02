@@ -1,0 +1,15 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: refs
+--- !type &Base
+port: !!int
+--- !node &Api
+good: !ref Base
+missing: !ref Nowhere
+elsewhere: !ref ../absent/Base
+mis-spelled: !ref refs::Base
+absent-member: !ref Base.nope
+bare-peer: !ref Peer
+named-peer: !ref peer/Peer

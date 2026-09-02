@@ -1,0 +1,23 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: bad
+---
+Base: !type &Base
+  port: !!int
+Items: !type &Items
+  - one
+  - two
+plain: &plain just-a-string
+legal: !node
+  <<: [*Base, {inline: 1}]
+  extends: *Base
+scalar-source: !node
+  <<: *plain
+nested-source: !node
+  <<: [[*Base]]
+sequence-ref: !node
+  <<: Items
+bad-extends: !node
+  extends: 7

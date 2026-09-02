@@ -7,8 +7,8 @@ mod common;
 
 use std::collections::HashSet;
 
-use yamlfy_core::{DiscoverOptions, FileClass, Mutability, ScopeKind, Visibility};
-use yamlfy_syntax::Code;
+use yamlfy_core::{discover_in, DiscoverOptions, FileClass, Mutability, ScopeKind, Visibility};
+use yamlfy_syntax::{Code, FileId, SourceMap};
 
 #[test]
 fn every_file_lands_in_one_source_map() {
@@ -19,6 +19,40 @@ fn every_file_lands_in_one_source_map() {
         assert_eq!(file.rank as usize, rank);
         assert_eq!(project.rank(file.id), Some(file.rank));
         assert!(project.file(file.id).is_some());
+    }
+}
+
+/// `FileId` is an index into one [`SourceMap`], so two projects discovered into
+/// two maps both start at `FileId(0)` and a span from either renders against
+/// the other's text. [`discover_in`] exists to stop that, and this is where the
+/// property is asserted: the CLI cannot show it, because it renders each
+/// group's report before discovering the next and never holds two projects at
+/// once — a fresh map per group produces byte-identical output and is caught by
+/// nothing.
+#[test]
+fn a_second_project_discovered_into_one_map_keeps_the_first_one_s_file_ids() {
+    let options = DiscoverOptions::default();
+    let first = discover_in(SourceMap::new(), common::projects().join("imports-source"), &options);
+    let first_ids: Vec<FileId> = first.files().iter().map(|f| f.id).collect();
+    let first_paths: Vec<std::path::PathBuf> =
+        first.files().iter().map(|f| f.path.clone()).collect();
+    assert!(first_ids.len() > 1, "the first project must occupy more than `FileId(0)`");
+
+    let second =
+        discover_in(first.into_sources(), common::projects().join("import-alias"), &options);
+    for id in second.files().iter().map(|f| f.id) {
+        assert!(
+            !first_ids.contains(&id),
+            "{id:?} was already the first project's; a fresh map would restart at FileId(0)"
+        );
+    }
+    for (id, path) in first_ids.iter().zip(&first_paths) {
+        assert_eq!(
+            second.sources().file(*id).path(),
+            path,
+            "and the map handed on still names the first project's files, so a span from \
+             either project renders against its own text"
+        );
     }
 }
 
@@ -92,7 +126,7 @@ fn a_header_supplies_its_directory_scope() {
     let scope = project.scopes().get(billing).expect("billing scope");
     assert_eq!(scope.namespace.as_deref(), Some("acme::billing"));
     assert_eq!(scope.visibility, Visibility::Public);
-    assert_eq!(scope.mutability, Mutability::Mutable, "unstated axes inherit");
+    assert_eq!(scope.mutability, Mutability::Immutable, "unstated axes inherit");
     assert_eq!(scope.declared_by.len(), 2, "both files declare this one scope");
 }
 
@@ -115,7 +149,7 @@ fn a_file_without_a_header_inherits_its_directory_scope() {
     let scope = project.scopes().get(child.scope).expect("sub scope");
     assert!(scope.declared.visibility.is_none(), "nothing declared here");
     assert_eq!(scope.visibility, Visibility::Public, "inherited from the root scope");
-    assert_eq!(scope.mutability, Mutability::Readonly, "inherited from the root scope");
+    assert_eq!(scope.mutability, Mutability::Immutable, "inherited from the root scope");
 }
 
 #[test]
@@ -129,12 +163,14 @@ fn the_root_scope_states_both_axes() {
 }
 
 #[test]
-fn an_undeclared_root_defaults_to_private_and_mutable() {
+fn an_undeclared_root_defaults_to_private_and_immutable() {
     let project = common::open("bad-axis");
     let root = project.scopes().root().expect("root");
     let scope = project.scopes().get(root).expect("root scope");
+    // Both axes are opt-in. A scope that says nothing grants nothing, so
+    // reaching into it and writing into it both have to be asked for.
     assert_eq!(scope.visibility, Visibility::Private);
-    assert_eq!(scope.mutability, Mutability::Mutable);
+    assert_eq!(scope.mutability, Mutability::Immutable);
 }
 
 #[test]
@@ -178,7 +214,7 @@ fn bad_header_values_are_e0231_and_accumulate() {
         4,
         "version, namespace, visibility and mutability are each wrong:\n{rendered}"
     );
-    for expected in ["pubic", "read-only", "private, public", "readonly, mutable"] {
+    for expected in ["pubic", "read-only", "private, public", "immutable, mutable"] {
         assert!(rendered.contains(expected), "`{expected}` missing from:\n{rendered}");
     }
     let scope = common::scope_by(&project, "bad-axis");
@@ -194,58 +230,10 @@ fn a_root_that_does_not_exist_is_a_diagnostic_not_a_panic() {
     assert_eq!(common::count(project.diagnostics(), Code::IoError), 1);
 }
 
-/// A scratch project tree that removes itself. Built in code rather than
-/// checked in because the thing under test is a *symlink*, which a source
-/// corpus cannot carry portably.
-#[cfg(unix)]
-mod scratch {
-    use std::path::{Path, PathBuf};
-
-    pub struct Tree(PathBuf);
-
-    impl Tree {
-        pub fn new(name: &str) -> Self {
-            let mut path = std::env::temp_dir();
-            let unique = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_nanos());
-            path.push(format!("yamlfy-{name}-{unique}"));
-            std::fs::create_dir_all(&path).expect("scratch tree");
-            Tree(path)
-        }
-
-        pub fn path(&self) -> &Path {
-            &self.0
-        }
-
-        pub fn write(&self, relative: &str, body: &str) {
-            let path = self.0.join(relative);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).expect("scratch directory");
-            }
-            std::fs::write(path, body).expect("scratch file");
-        }
-
-        pub fn link(&self, target: &str, link: &str) {
-            let path = self.0.join(link);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).expect("scratch directory");
-            }
-            std::os::unix::fs::symlink(self.0.join(target), path).expect("scratch symlink");
-        }
-    }
-
-    impl Drop for Tree {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-}
-
 #[cfg(unix)]
 #[test]
 fn a_file_reached_twice_through_a_symlink_is_registered_once() {
-    let tree = scratch::Tree::new("symlink-file");
+    let tree = common::scratch::Tree::new("symlink-file");
     tree.write("zzz/real.yfy", "--- !node &n\nport: 1\n");
     tree.link("zzz/real.yfy", "aaa.yfy");
 
@@ -260,7 +248,7 @@ fn a_file_reached_twice_through_a_symlink_is_registered_once() {
 #[cfg(unix)]
 #[test]
 fn a_symlinked_directory_cycle_terminates_and_ranks_by_relative_path() {
-    let tree = scratch::Tree::new("symlink-cycle");
+    let tree = common::scratch::Tree::new("symlink-cycle");
     tree.write("pkg/one.yfy", "--- !node &a\nport: 1\n");
     tree.link("", "pkg/loop");
 
@@ -271,7 +259,7 @@ fn a_symlinked_directory_cycle_terminates_and_ranks_by_relative_path() {
 #[cfg(unix)]
 #[test]
 fn rank_follows_the_relative_path_not_where_a_link_points() {
-    let tree = scratch::Tree::new("symlink-order");
+    let tree = common::scratch::Tree::new("symlink-order");
     tree.write("targets/zzz.yfy", "--- !node &z\nport: 1\n");
     tree.write("targets/aaa.yfy", "--- !node &a\nport: 2\n");
     tree.link("targets/zzz.yfy", "links/aaa.yfy");

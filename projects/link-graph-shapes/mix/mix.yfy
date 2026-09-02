@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yamlfy/header
+version: 1
+namespace: graph::mix
+imports: [cycle.yfy]
+---
+Base: !type &Base
+  port: !!int
+Api: !node &Api
+  extends: *Base
+  <<: ../cycle/B
+  own: 3

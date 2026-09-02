@@ -122,10 +122,12 @@ impl Claims {
         for (index, entry) in self.scopes.into_iter().enumerate() {
             let id = ScopeId(u32::try_from(index).expect("scope tree overflow"));
             let visibility_span = entry.span_of(Property::Visibility);
+            let mutability_span = entry.span_of(Property::Mutability);
             if let Some(scope) = tree.get_mut(id) {
                 scope.declared = entry.declared;
                 scope.declared_by = entry.declared_by;
                 scope.visibility_span = visibility_span;
+                scope.mutability_span = mutability_span;
             }
             if let Some((namespace, span)) = entry.namespace {
                 tree.claim_namespace(id, &namespace, span);

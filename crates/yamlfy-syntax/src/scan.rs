@@ -30,7 +30,7 @@ pub(crate) struct TokenRange {
 /// the rest — silently, because the name is only recovered text and the
 /// `AnchorId` binding still succeeds. The result is a wrong node identifier and a
 /// fabricated `W0300`, with neither `E0120` nor `E0121` able to see it.
-fn is_name_char(c: char) -> bool {
+pub(crate) fn is_name_char(c: char) -> bool {
     // is_yaml_non_space: not a line break, not a BOM, not a blank.
     !matches!(c, '\n' | '\r' | '\u{FEFF}' | ' ' | '\t')
         // is_flow
