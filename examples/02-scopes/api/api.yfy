@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: shop::api
+visibility: public
+--- !type &Service
+# A bare member is private and immutable. Both axes are opt-in, so what a
+# reader outside this scope may see is exactly what says `pub`.
+pub port: !!int 80
+pub region: !!str eu-west
+internal_pool: 4

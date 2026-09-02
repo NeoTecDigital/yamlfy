@@ -1,0 +1,28 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ring::net
+visibility: public
+# A family every node in the ring belongs to. The inheritance graph is a tree.
+--- !type &Node
+pub name: !!str
+pub next:
+# The data graph is a ring: each node points at the next, and the last points
+# back at the first. Cyclic DATA is legal -- it is the subject matter, not an
+# edge case -- and only a cycle through INHERITANCE is refused.
+--- !node &Third
+extends: Node
+pub name: third
+# Closing the ring. A path resolves by name, so it may name a node written
+# later in the file; an alias could not, because an alias binds to a
+# definition that already exists at the point it is written.
+pub next: First
+--- !node &Second
+extends: Node
+pub name: second
+pub next: Third
+--- !node &First
+extends: Node
+pub name: first
+pub next: Second

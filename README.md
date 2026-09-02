@@ -103,6 +103,22 @@ Configuration is `yamlfy.toml` and `YAMLFY_*`; every diagnostic code can be set 
 `allow`, `warning` or `error`, so a project that wants a closed world writes
 `--deny W0301` and gets it.
 
+## Examples
+
+[`examples/`](examples) holds four complete projects, each with a `README.md` and each
+compiled by an integration test so it cannot rot:
+
+| | |
+|---|---|
+| [`01-three-operators`](examples/01-three-operators) | inclusion, extension and extended reference side by side, and what each one changes besides the node you are writing |
+| [`02-scopes`](examples/02-scopes) | the directory tree as the scope hierarchy; both axes closed by default; an import that is not a visibility grant |
+| [`03-edges`](examples/03-edges) | an edge as a node whose content is its connections — n-ary, addressable, extendable |
+| [`04-cycles-and-states`](examples/04-cycles-and-states) | cyclic data as ordinary subject matter, and an anchor redefined as a state transition |
+
+```sh
+yamlfy check examples/01-three-operators
+```
+
 ## The specification
 
 [`docs/semantics.md`](docs/semantics.md) is normative. It is not a tutorial: it records

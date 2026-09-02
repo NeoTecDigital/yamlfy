@@ -161,14 +161,20 @@ pub mod pipeline {
         /// see half the diagnostics makes a test that asserts one of them pass
         /// or fail for the wrong reason.
         pub fn rendered(&self) -> String {
-            let mut out = self.linked.diagnostics().render(self.project.sources());
-            out.push_str(&self.checked.diagnostics().render(self.project.sources()));
+            let mut out = String::new();
+            for held in [self.project.diagnostics(), self.linked.diagnostics(), self.checked
+                .diagnostics()]
+            {
+                out.push_str(&held.render(self.project.sources()));
+            }
             out
         }
 
         pub fn count(&self, code: Code) -> usize {
-            super::count(self.linked.diagnostics(), code)
-                + super::count(self.checked.diagnostics(), code)
+            [self.project.diagnostics(), self.linked.diagnostics(), self.checked.diagnostics()]
+                .iter()
+                .map(|held| super::count(held, code))
+                .sum()
         }
 
         pub fn file(&self, ends_with: &str) -> FileId {

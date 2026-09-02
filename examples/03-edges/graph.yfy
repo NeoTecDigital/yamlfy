@@ -1,0 +1,37 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: graph::org
+visibility: public
+--- !node &Api
+pub name: !!str api
+--- !node &Billing
+pub name: !!str billing
+--- !node &Platform
+pub name: !!str platform
+# An edge is a node whose content is what it connects. `connections` is a
+# sequence, so an edge is n-ary -- a relation is not required to be binary.
+--- !type &Relation
+pub connections: []
+pub since: !!str unknown
+# A binary relation, with `definition` naming the two positions so an endpoint
+# is addressed by a name instead of by an index.
+--- !edge &Owns
+extends: Relation
+pub connections: [Platform, Api]
+pub definition:
+  owner: 0
+  owned: 1
+pub since: 2026-01-01
+# Three services share one on-call rotation. One edge, three endpoints.
+--- !edge &SharesRotation
+extends: Relation
+pub connections: [Api, Billing, Platform]
+pub since: 2026-02-01
+# Two handles may name one position, which is how a self-loop is written.
+--- !edge &DependsOnItself
+pub connections: [Billing]
+pub definition:
+  from: 0
+  to: 0

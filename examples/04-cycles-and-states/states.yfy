@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+# An anchor is a position-scoped binding, so redefining one is a state
+# transition rather than a mistake, and an alias binds to whichever state is
+# in force where the alias is written. This is one document: anchors do not
+# cross a `---`, so a sequence of states lives inside one.
+--- !node &Rollout
+first: &state
+  port: 80
+early_reader: *state
+second: &state
+  port: 443
+late_reader: *state

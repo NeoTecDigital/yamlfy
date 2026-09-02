@@ -1,0 +1,55 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: guild::stock
+visibility: public
+# `mutable`, because the last section of this file writes an extended
+# reference, and that is a compile-time write to its target.
+mutability: mutable
+
+# An ordinary anchored mapping. Untagged, so it is abstract: inheritable, and
+# never emitted as a model of its own.
+--- &water
+pub solvent: spring-water
+pub volume_ml: 250
+
+# `!type` is abstract too, but it says so. A family fixes what every potion has.
+--- !type &BasePotion
+# Three states, and they are the whole declaration rule: a tag with a value is
+# optional-with-a-default, a tag with no value is required, and no tag at all
+# is declared-but-unconstrained.
+pub vessel: !!str vial
+pub cork: !!str wax
+pub label: !!str untitled
+pub notes:
+
+# The Guild's own potion, on the shelf, brewed daily.
+--- !node &SleepingTonic
+extends: BasePotion
+pub label: Sleeping Tonic
+
+# ---------------------------------------------------------------- inclusion
+# `<<` says this tonic *has* water in it. Water has no opinion about tonics,
+# and nothing else in the Guild moved.
+--- !node &MoonTonic
+<<: water
+pub label: Moon Tonic
+pub volume_ml: 100
+
+# ---------------------------------------------------------------- extension
+# `extends` says a healing draught *is a kind of* potion. The Guild's
+# definition of a potion is exactly what it was this morning.
+--- !node &HealingDraught
+extends: BasePotion
+pub label: Healing Draught
+pub reagent: sunroot
+
+# ------------------------------------------------------- extended reference
+# One token different, and the blast radius is the whole Guild. This does not
+# define a new potion that has a seal; it adds a seal to `BasePotion` itself,
+# so every potion in the building has one — including `SleepingTonic`, which
+# nobody edited.
+--- !node &Sealed
+extends: !ref BasePotion
+pub seal: guild-wax

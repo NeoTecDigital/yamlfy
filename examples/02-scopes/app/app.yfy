@@ -1,0 +1,14 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: shop::app
+visibility: public
+# The import crosses the file boundary. After it, an ordinary alias reaches
+# what that file defines -- so `extends: *Service` is closed cross-file
+# inheritance, and D2.6 is untouched: by the time the alias is written,
+# `Service` is a definition of this document.
+imports: [api/api.yfy]
+--- !node &Storefront
+extends: *Service
+pub port: 8443
