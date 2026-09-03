@@ -1,0 +1,18 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: inst
+visibility: public
+mutability: mutable
+# A `!ref` in a data position declares mutation intent and a dependency. It
+# does NOT install this node's keys onto its target -- only `extends: !ref`
+# contributes (D4.3). If it did, `spurious` would become legitimate vocabulary
+# on `Base` and on every descendant, silencing `Impl`'s W0301 project-wide.
+--- !node &ByData
+pub svc: !ref base/Base
+pub spurious: !!int 7
+# The same for an inclusion carrying a capability.
+--- !node &ByInclusion
+<<: !ref base/Base
+pub also_spurious: !!int 8

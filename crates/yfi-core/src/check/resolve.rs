@@ -260,7 +260,19 @@ impl Run<'_> {
     fn installed_on(&self, place: Place) -> Vec<Place> {
         let mut out: Vec<Place> = self
             .edges(place, Direction::Reverse)
+            // **Only an extended reference installs.** D4.3 is explicit: of the
+            // three things a `!ref` declares, contribution belongs to
+            // `extends: !ref` alone; the others declare the dependency and
+            // install nothing. Every `!ref` outside an `extends` clause also
+            // contributes a reverse edge — that is what carries the dependency —
+            // so taking every reverse edge here made `key: !ref P` and
+            // `<<: !ref P` push the whole enclosing mapping's keys onto P and
+            // every descendant of P, project-wide and with no diagnostic. The
+            // symptom was a `W0301` going quiet: a junk member became
+            // legitimate vocabulary because an unrelated file declared a
+            // capability.
             .into_iter()
+            .filter(|edge| edge.0 == EdgeKind::ExtendedReference)
             .map(|edge| edge.1)
             .filter(|source| *source != place)
             .collect();

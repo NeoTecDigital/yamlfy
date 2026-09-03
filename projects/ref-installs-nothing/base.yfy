@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: inst
+visibility: public
+mutability: mutable
+--- !type &Base
+pub port: !!int 80
+--- !node &Impl
+extends: Base
+pub junk: !!int 1

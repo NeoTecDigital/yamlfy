@@ -330,3 +330,28 @@ fn merge_is_shallow() {
     assert_eq!(fixture.resolved_keys(derived), ["nested"]);
     assert_eq!(fixture.resolved_keys(nested), ["c"], "the whole value is taken, not merged into");
 }
+
+#[test]
+fn only_an_extended_reference_installs_keys_on_its_target() {
+    // D4.3: of the three things `!ref` declares, contribution belongs to
+    // `extends: !ref` alone. Every `!ref` contributes a reverse edge -- that is
+    // what carries the dependency -- so a `check` pass that reads every reverse
+    // edge lets `key: !ref P` and `<<: !ref P` push their whole mapping's keys
+    // onto P and every descendant of it, project-wide and silently.
+    //
+    // The symptom is a warning going quiet, which is why this asserts the
+    // warning is still there: `Impl`'s `junk` is declared by no ancestor, and
+    // it stays undeclared however many capabilities other files declare on
+    // `Base`. Assert the count, not merely that it compiles.
+    let fixture = open("ref-installs-nothing");
+    assert_eq!(fixture.count(Code::UndeclaredField), 1, "{}", fixture.rendered());
+
+    let base = fixture.node("base.yfy", "Base");
+    let declared = fixture.declared_keys(base);
+    for absent in ["spurious", "also_spurious"] {
+        assert!(
+            !declared.iter().any(|held| held == absent),
+            "`{absent}` was installed on `Base` by a reference that must not contribute: {declared:?}"
+        );
+    }
+}

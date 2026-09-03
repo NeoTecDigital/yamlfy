@@ -14,7 +14,8 @@
 mod common;
 
 use yfi_syntax::{
-    parse, Ast, BlockKind, Code, Dialect, NodeKind, ParseOptions, ScalarStyle, SourceMap, Span,
+    parse, Ast, BlockKind, Code, Dialect, NodeId, NodeKind, ParseOptions, ScalarStyle, SourceMap,
+    Span,
 };
 
 /// Parse `text` as one dialect or the other.
@@ -203,4 +204,44 @@ fn none_of_it_happens_in_base_yaml() {
     let b = common::value_of(&parsed.ast, doc, "b");
     assert_eq!(parsed.ast.scalar(b).expect("s").style, ScalarStyle::Plain);
     assert_eq!(&*parsed.ast.scalar(b).expect("s").value, "<?-- not a block -->");
+}
+
+#[test]
+fn a_block_scalar_survives_crlf_line_endings() {
+    // `is_block_header` looked for `\n` or `#` after the chomping indicators.
+    // Under CRLF the `\r` sits between them, so the header was not recognised,
+    // `block_scalar` never ran, and the block's contents were rewritten as
+    // ordinary text: `//` inside a literal scalar silently became a comment,
+    // and `<?-- -->` inside one silently became a code block -- changing the
+    // node's kind and dropping part of its value, with no diagnostic. Any
+    // checkout with `core.autocrlf=true` hit it, and the whole corpus is LF.
+    let lf = "script: |\n  // not a comment\n  keep\nnext: 1\n";
+    let crlf = "script: |\r\n  // not a comment\r\n  keep\r\nnext: 1\r\n";
+
+    let (lf_value, crlf_value) = (block_value(lf), block_value(crlf));
+    assert!(lf_value.contains("// not a comment"), "LF: {lf_value:?}");
+    assert_eq!(
+        crlf_value.replace("\r\n", "\n"),
+        lf_value,
+        "a block scalar must hold the same text whatever the line endings"
+    );
+    assert!(crlf_value.contains("// not a comment"), "CRLF rewrote the block: {crlf_value:?}");
+    assert!(crlf_value.contains("keep"), "CRLF dropped part of the block: {crlf_value:?}");
+}
+
+/// The value of the first block scalar in a Yamlfication source.
+fn block_value(text: &str) -> String {
+    let mut sources = SourceMap::new();
+    let file = sources.add_as("crlf.yfy", text, Dialect::Yamlfication);
+    let parsed = parse(&sources, file, &ParseOptions::default());
+    parsed
+        .ast
+        .nodes()
+        .iter()
+        .enumerate()
+        .find_map(|(at, _)| {
+            let scalar = parsed.ast.scalar(NodeId(u32::try_from(at).ok()?))?;
+            scalar.value.contains("comment").then(|| scalar.value.to_string())
+        })
+        .unwrap_or_default()
 }

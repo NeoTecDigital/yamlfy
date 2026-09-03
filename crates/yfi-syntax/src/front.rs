@@ -278,7 +278,14 @@ impl Scan {
         while self.source.get(at) == Some(&' ') {
             at += 1;
         }
-        matches!(self.source.get(at), None | Some('\n' | '#'))
+        // `\r` belongs here: under CRLF it sits between the indicators and the
+        // newline, and without it this returns false, `block_scalar` never
+        // runs, and the block's contents are rewritten as ordinary text. A
+        // `//` inside a literal scalar then silently becomes a comment and a
+        // `<?-- -->` inside one silently becomes a code block — the node
+        // changes kind and part of the value disappears, with no diagnostic.
+        // Every checkout with `core.autocrlf=true` would hit it.
+        matches!(self.source.get(at), None | Some('\n' | '\r' | '#'))
     }
 
     /// Skip a block scalar's content: every following line that is blank or
