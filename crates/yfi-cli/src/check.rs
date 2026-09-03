@@ -4,10 +4,9 @@
 //! The `yamlfy check` subcommand.
 //!
 //! **`check <file>` and `check <dir>` are one operation at two scopes** (D6.1),
-//! so this runs `discover` and never the parser alone. Parsing a file by itself
-//! cannot see a header's `imports:`, so every cross-file alias in it reports as
-//! an unknown anchor — the file compiles through the library and fails through
-//! the command line, which is worse than not having the subcommand.
+//! so this runs `discover` and never the parser alone: parsing a file by itself
+//! cannot see a header's `imports:`, so every cross-file alias in it would
+//! report as an unknown anchor.
 //!
 //! # What the project root is, and why
 //!
@@ -36,35 +35,14 @@
 //! # What is printed
 //!
 //! Discovering the project reads every file under the root; **reporting is
-//! narrowed to the paths that were asked about.** A path that is a directory
-//! reports its whole subtree. Findings that belong to no discovered file — an
-//! unreadable directory, say — are always printed, because nothing else would
-//! carry them.
+//! narrowed to the paths that were asked about**, a directory reporting its
+//! whole subtree. Findings belonging to no discovered file are always printed,
+//! because nothing else would carry them.
 //!
-//! # One map, one render, one decision about severity
-//!
-//! Two invariants hold this together and each is load-bearing rather than
-//! decorative:
-//!
-//! **One [`SourceMap`] for the whole invocation.** A [`FileId`] is an index
-//! into it, so a second map would restart at `FileId(0)` and every span from
-//! the first project would then name the second project's files. That is only
-//! a real constraint because the report is rendered **once, at the end**, from
-//! one accumulated collection: a per-group render would resolve each group's
-//! spans against that group's own map and the invariant would buy nothing.
-//! Rendering once is also what makes `--allow`/`--deny` counting and the exit
-//! code cover the whole invocation rather than a group of it.
-//!
-//! **Severity is decided once, by the pass that raised the finding.** The map
-//! is handed to `discover`, `link_with` and `check_with`, which is where it
-//! must be: `allow` suppresses *recording*, and a collection cannot un-record
-//! a diagnostic it never received. Everything here merges with
-//! [`Diagnostics::absorb`], which keeps the severity each item already carries,
-//! so there is exactly one place that answers "how serious is this".
-//!
-//! `--dump` prints each project's arenas as that project is checked, so the
-//! report follows the dumps rather than preceding them. The dumps are a debug
-//! aid tied to one project; the report is the invocation's.
+//! One [`SourceMap`] and one render for the whole invocation, severity decided
+//! by the pass that raised the finding (§4). `--dump` prints each project's
+//! arenas as that project is checked, so the report follows the dumps: the
+//! dumps are tied to one project, the report is the invocation's.
 
 use std::collections::HashSet;
 use std::io::{StdoutLock, Write};
@@ -75,7 +53,7 @@ use tracing::{debug, info};
 use yfi_config::Config;
 use yfi_core::check::check_with;
 use yfi_core::link::link_with;
-use yfi_core::{discover_in, intern, DiscoverOptions, FileClass, Project};
+use yfi_core::{discover_in, identity, intern, DiscoverOptions, FileClass, Project};
 use yfi_syntax::{parse_file, Diagnostics, FileId, Severity, SeverityMap, SourceMap};
 
 /// Check every path. Exit code is 0 when no error-level diagnostic was raised
@@ -179,14 +157,9 @@ impl Run {
     /// Take the selected files' diagnostics into the invocation's collection,
     /// and print their arenas when asked.
     ///
-    /// The three collections are kept apart by the passes that raise them and
-    /// are merged here so one render, one count and one exit code cover all of
-    /// them. Merge order does not decide print order: [`Diagnostics::render`]
-    /// sorts by position, so a reader gets a file read top to bottom rather
-    /// than grouped by which pass happened to find what.
-    ///
-    /// Severity is not re-decided. Each pass was handed the configuration and
-    /// has already applied it, `Allow` included, so absorbing is the whole job.
+    /// The three collections are merged here so one render, one count and one
+    /// exit code cover all of them; merge order does not decide print order,
+    /// and severity is not re-decided (§4).
     fn collect(
         &mut self,
         project: &Project,
@@ -279,12 +252,6 @@ fn select(project: &Project, paths: &[PathBuf]) -> Selection {
         .map(|(path, _)| path.clone())
         .collect();
     Selection { reported, hidden, absent }
-}
-
-/// A path's real identity, so a symlinked or `./`-prefixed spelling of a file
-/// still matches the one the walk discovered.
-fn identity(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn count(diagnostics: &Diagnostics, severity: Severity) -> usize {

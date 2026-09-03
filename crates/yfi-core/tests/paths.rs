@@ -8,10 +8,7 @@
 //! scalar is read as a path and where it stays data, and what `!ref` adds on
 //! top — a binding whose members are addressable with `.`.
 //!
-//! Two codes are owed here: `E0213` for a path that names nothing and `E0218`
-//! for one that lands and then addresses a member the target does not hold.
-//! They are two codes because the fixes are different — the path, or the member
-//! name.
+//! Two codes are owed here: `E0213` and `E0218`.
 
 mod common;
 

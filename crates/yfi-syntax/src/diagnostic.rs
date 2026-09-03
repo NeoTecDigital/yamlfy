@@ -137,12 +137,10 @@ impl Diagnostics {
     /// Append diagnostics that have **already been through configuration**,
     /// keeping the severity each one carries.
     ///
-    /// [`Diagnostics::push`] decides severity; this does not. Severity is
-    /// decided exactly once, by the pass that raised the finding, because
-    /// `Allow` has to suppress *recording* and a collection cannot un-record
-    /// what it never saw. A merger that re-decided would also let its own map
-    /// silently override the one the raising pass was configured with — which
-    /// is a second source of truth for a question that has one.
+    /// [`Diagnostics::push`] decides severity; this does not (§4). A merger
+    /// that re-decided would let its own map silently override the one the
+    /// raising pass was configured with — a second source of truth for a
+    /// question that has one.
     pub fn absorb(&mut self, items: impl IntoIterator<Item = Diagnostic>) {
         self.items.extend(items);
     }
@@ -150,20 +148,8 @@ impl Diagnostics {
     /// Every diagnostic, ordered by **where it points**: file, then line, then
     /// column. Ties keep the order they were found in, the sort being stable.
     ///
-    /// This is D6.3's `(file rank, document index, node index)` expressed in the
-    /// terms a diagnostic actually carries. A `FileId` is an index into the one
-    /// source map and files are registered in discovery order, so ordering by it
-    /// is ordering by file rank; and within a file, position ascends with
-    /// document and node index, so line and column decide the rest.
-    ///
-    /// Insertion order cannot be the printed order. Findings arrive by *pass*,
-    /// not by position — every file's parse diagnostics, then everything the
-    /// project-wide passes found — so a cause routinely prints after its
-    /// consequence (`E0241` at line 7 after the `E0100` at line 9 it explains)
-    /// and files interleave. A reader fixes faults top-down through a file.
-    ///
-    /// A diagnostic with no span sorts last: it belongs to no position, and
-    /// putting it first would push the file it is about below it.
+    /// This is D6.3's `(file rank, document index, node index)` in the terms a
+    /// diagnostic carries (§4). A diagnostic with no span sorts last.
     #[must_use]
     pub fn in_position_order(&self) -> Vec<&Diagnostic> {
         let mut ordered: Vec<&Diagnostic> = self.items.iter().collect();

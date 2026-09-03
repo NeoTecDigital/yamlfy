@@ -3,47 +3,13 @@
 
 //! `E0219` — a `!ref` binding that shadows a definition of its own file.
 //!
-//! D4.12 justifies the bare path form by saying that *"making the bare form
-//! file-local means a name never silently starts resolving somewhere else when
-//! a sibling file is added"*. A `!ref` binding outranks the file's own
-//! definitions, so the guarantee held against a new *file* and not against a
-//! new *line*:
-//!
-//! ```text
-//! --- !type &Widget
-//! near: !!int 1
-//! --- !node &Use
-//! Widget: !ref other/Widget    # <- add this one line
-//! child: !node
-//!   extends: Widget            # <- unchanged; now names another directory
-//! ```
-//!
-//! With matching keys the retarget produces no diagnostic, no shape change and
-//! no value change worth noticing — the strongest form of the fault D1.8
-//! refuses, because nothing about the program says it happened.
-//!
-//! # Why the collision is the error rather than the precedence
-//!
-//! The alternative was to make local definitions outrank bindings. That closes
-//! the retarget and opens a quieter hole: the binding would still be written,
-//! still carry the capability, and still be the thing `Widget.member` addresses
-//! through in an author's head — while every bare `Widget` silently meant
-//! something else. One spelling would denote two things depending on whether a
-//! `.` followed it, which is the same fault wearing the opposite sign.
-//!
-//! So the precedence is left exactly where it was, documented and unchanged,
-//! and **the ambiguity itself is refused**. There is no resolution order to
-//! learn, no line whose meaning depends on a line elsewhere, and the fix is a
-//! rename the author can make in one place.
-//!
-//! # Scope of the comparison
-//!
-//! A binding is a document's; a definition is a file's, which is what a bare
-//! path resolves against ([`super::table::Table::in_file`]). So the comparison
-//! is file-wide: a binding in the second document of a file still makes one
-//! spelling mean two things in one file, and that is what the rule is about.
-//! Imported names are not definitions of this file and do not collide — they
-//! are already governed by `W0300`.
+//! D4.12 owns the argument: a binding outranks the file's own definitions, so
+//! adding one `!ref` line silently retargets every bare name already written,
+//! and reversing the precedence only trades that for a quieter hole — so the
+//! ambiguity itself is refused. The comparison is **file-wide**, because a
+//! definition is a file's ([`super::table::Table::in_file`]) while a binding is
+//! a document's. Imported names are not definitions of this file and do not
+//! collide; `W0300` already governs those.
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, Span};
 

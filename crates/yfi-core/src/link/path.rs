@@ -3,55 +3,12 @@
 
 //! The path grammar, and the space a path walks (D4.12).
 //!
-//! A reach is spelled the way a filesystem is spelled, because the scope tree
-//! *is* the directory tree:
-//!
-//! ```text
-//! ../shared/Service     up one directory, then into `shared`, then `Service`
-//! ../../core/Base       up two
-//! sibling/Service       a peer file in this directory
-//! Service               this file
-//! Service.port          a member of it
-//! ```
-//!
-//! **The path performs the reach.** There is no declaration list to keep in
-//! step with it: `..` walks up the scope tree exactly as it walks up
-//! directories, a bare segment names a peer directory or a peer file, and `.`
-//! addresses members. Naming a peer *is* reaching it.
-//!
-//! # Grammar
-//!
-//! ```text
-//! path    := prefix segment ("/" segment)* ("." member)*
-//! prefix  := "./" | "../"+ | ε
-//! segment := name
-//! member  := name
-//! name    := [A-Za-z_] [A-Za-z0-9_-]*
-//! ```
-//!
-//! `name` deliberately excludes `.`, `:` and digits-first, so `7`,
-//! `acme::billing/invoice` and `http://host/thing` are **not** paths. That is
-//! what lets a plain scalar be read as a path where a path is expected without
-//! silently reinterpreting data that merely contains a slash.
-//!
-//! # What each form resolves against
-//!
-//! | written | resolved against |
-//! |---|---|
-//! | `Name` | a `!ref` binding of this document, else a definition of **this file** |
-//! | `./Name` | a definition of **this directory** |
-//! | `dir/Name`, `file/Name` | a child scope of this directory, else a peer file of it |
-//! | `../…` | the same, one scope higher per `..` |
-//!
-//! A segment that names both a child directory and a file stem resolves to the
-//! **directory**. The alternative — file first — would let adding a directory
-//! silently move an existing path, and a directory is the more public address
-//! of the two because it is what a namespace is claimed on (D6.1).
-//!
-//! Only Yamlfication source files answer a path. A base YAML file declares
-//! nothing and has no addressable definitions (D6.6), so it is reachable by
-//! `imports:` and by nothing else — which is also why a `service.yfy` beside a
-//! `service.yaml` is not ambiguous.
+//! The grammar, the resolution table and the directory-before-file rule are all
+//! D4.12's. `name` excludes `.`, `:` and digits-first, which is what lets a
+//! plain scalar be read as a path where one is expected without silently
+//! reinterpreting data that merely contains a slash. Only Yamlfication source
+//! answers a path (D6.6), so `service.yfy` beside `service.yaml` is not
+//! ambiguous.
 
 use std::collections::HashMap;
 
@@ -222,17 +179,10 @@ enum Landing {
 /// Members are applied here too, because a member is addressing within
 /// whatever the segments named and needs the same arena walk.
 ///
-/// # The gate stands in front of the lookup
-///
 /// Visibility is asked of the place the walk landed **before** the final
-/// segment is sought there and before any `.` member is addressed. D4.12 gives
-/// an outsider no access to a private definition *at all* — not its members,
-/// not its public surface, not its name — and a lookup performed first is an
-/// oracle whatever the diagnostic says afterwards: a member that exists, a
-/// member that does not and a name that does not would each earn a
-/// distinguishable answer, and between them an outsider enumerates the scope.
-/// So an invisible landing resolves to **nothing**, with one shape of answer
-/// that differs only in the path the author wrote.
+/// segment is sought there and before any `.` member is addressed, so an
+/// invisible landing resolves to nothing and the answer's shape does not vary
+/// with whether the node exists (D4.12).
 pub(crate) fn resolve(
     ctx: &Ctx,
     space: &Space,

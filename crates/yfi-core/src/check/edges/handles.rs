@@ -3,21 +3,15 @@
 
 //! `definition` — the handles an edge gives its positions, and `E0225`.
 //!
-//! A handle is a **name for a position** in `connections`, so an endpoint can
-//! be addressed as `source` rather than as `0`. That is the whole of it, and
-//! every rule below follows from it: the value is an index and never a node, a
-//! position has one spelling, the mapping is many-to-one on purpose, and the
-//! two names the language owns on an edge are not available to take.
+//! A handle is a **name for a position** in `connections` (D4.13), and every
+//! rule follows from that: the value is an index and never a node, a position
+//! has one spelling, the mapping is many-to-one on purpose, and the two names
+//! the language owns on an edge are not available to take.
 //!
-//! # What survives a malformed `connections`
-//!
-//! The two members are read **independently** (D4.13), which has to hold when
-//! one of them is broken. `definition`'s own shape, a handle taking an owned
-//! name and a value that is not a position at all are wrong whatever the
-//! sequence above them holds, so all three are reported. Only the **bound** is
-//! lost with the sequence, so only *past the end* is withheld: raised against
-//! zero it would print one fault once per handle, and every one of them would
-//! disappear when the member above was fixed.
+//! The two members are read **independently**, which has to hold when one of
+//! them is broken: only the *bound* is lost with a malformed `connections`, so
+//! only *past the end* is withheld and the other two conditions are reported
+//! whatever the sequence above them holds.
 
 use yfi_syntax::{Ast, Code, Diagnostic, Diagnostics, NodeId};
 

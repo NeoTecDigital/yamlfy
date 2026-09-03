@@ -16,14 +16,10 @@
 //! that cannot be decoded and a header that states nonsense are all
 //! diagnostics, so one bad file never decides the fate of the rest of the tree.
 //!
-//! # Why a file is parsed twice
-//!
-//! A header's `imports:` can only be read from a parse, and the definitions it
-//! imports have to be installed *before* the importing file's first document
-//! event (D6.7). Those two facts do not fit in one pass, so a file that imports
-//! anything is surveyed, then re-parsed with its imports bound; see
-//! [`crate::bind`]. Only the second parse's arena and diagnostics survive, and
-//! a file that imports nothing is never parsed twice.
+//! A file that imports anything is parsed **twice** — a header's `imports:` can
+//! only be read from a parse, and what it imports must be installed before that
+//! file's first document event (D6.7). Only the second parse's arena and
+//! diagnostics survive; see [`crate::bind`].
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -41,6 +37,8 @@ use crate::imports;
 use crate::reserved;
 use crate::scope::{ScopeId, ScopeTree};
 use crate::walk::{self, Candidate};
+
+pub use crate::walk::identity;
 
 /// Which language a file is read as.
 ///
@@ -218,16 +216,6 @@ impl Project {
     #[must_use]
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
-    }
-
-    /// Take the diagnostics so a later pass can keep accumulating into them.
-    pub fn take_diagnostics(&mut self) -> Diagnostics {
-        std::mem::take(&mut self.diagnostics)
-    }
-
-    /// Add a later pass's findings back.
-    pub fn absorb(&mut self, diagnostics: Diagnostics) {
-        self.diagnostics.extend(diagnostics);
     }
 
     /// The files `id`'s header imports, in written order.

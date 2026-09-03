@@ -8,10 +8,8 @@
 //! `E0220` (required field unsatisfied), `E0221` (declared-tag mismatch) and
 //! `W0301` (undeclared field), plus `W0303` widened to a resolved base.
 //!
-//! `E0216` — what a path may *reach* — is pass 4's: an invisible target has to
-//! resolve to nothing, or member resolution runs against it first and the
-//! answer discloses what the gate refused. It is asserted in `tests/access.rs`
-//! beside the gate it belongs to.
+//! `E0216` is pass 4's and is asserted in `tests/access.rs`, beside the gate it
+//! belongs to.
 //!
 //! The rest is about the two things a plausible wrong implementation gets wrong
 //! and still passes a diagnostic-count test: a cycle reported against the
@@ -274,9 +272,7 @@ fn a_cross_file_diamond_reaches_its_base_once_and_resolves_in_written_order() {
 
 #[test]
 fn declaring_is_not_including() {
-    // An inclusion is compositional, not definitional: a node that includes
-    // `water` is not a water, so a mixin's keys are not part of what the
-    // including node declares.
+    // An inclusion is compositional, not definitional (D4.1).
     let fixture = open("check-tag-mismatch");
     let api = fixture.node("app.yfy", "Api");
     assert!(fixture.declared_keys(api).is_empty(), "{:?}", fixture.declared_keys(api));

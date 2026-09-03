@@ -3,44 +3,24 @@
 
 //! The `.yfy` front end: the pre-pass that runs before the YAML parser.
 //!
-//! `.yfy` holds three constructs a YAML parser rejects outright — `// comment`,
-//! `<?-- … --!>` and `<?-- … -->` are each a scanner error. They are therefore
-//! rewritten out of the text **before** the parser sees a byte of it, and only
-//! for a [`Dialect::Yamlfication`] file. A `.yaml`/`.yml` is base YAML and is
-//! handed to the parser exactly as it was written (D6.6).
+//! `// comment`, `<?-- … --!>` and `<?-- … -->` are each a YAML scanner error,
+//! so they are rewritten out of the text **before** the parser sees a byte of
+//! it, and only for a [`Dialect::Yamlfication`] file (D6.6).
 //!
-//! # The rewrite is a character-for-character substitution
-//!
-//! Every downstream byte offset, line and column is a position in the file the
-//! author wrote, so the rewrite is not allowed to move one. It is therefore
-//! constrained to substitution: **one character out for one character in, and a
-//! line break is never touched**. `//` becomes `# ` — two characters for two,
-//! which is why the comment spelling was chosen — and a block's region becomes
-//! filler of the same length holding the same line breaks.
-//!
-//! Byte offsets are the one thing a substitution can still move, because an
-//! ASCII space replacing a multi-byte character is shorter. So a rewritten file
-//! keeps **two** offset tables: a position is resolved against the offsets of
-//! the text as written, and text is sliced against the offsets of the text the
-//! parser read. See [`crate::span::SourceFile`].
-//!
-//! # What each construct becomes
+//! The rewrite is a character-for-character substitution and a rewritten file
+//! therefore keeps **two** offset tables (D8.4) — see [`crate::span::SourceFile`].
 //!
 //! | written | seen by the parser | what reaches the arena |
 //! |---|---|---|
 //! | `// note` | `#  note` | nothing; it is a comment |
-//! | `<?-- … --!>` | spaces | nothing; captured as a [`Block`] for documentation |
-//! | `<?-- … -->` | `.` on its first line, spaces after | one scalar, styled [`ScalarStyle::Code`] |
+//! | `<?-- … --!>` | spaces | nothing; captured as a [`Block`] |
+//! | `<?-- … -->` | `.` on its first line, spaces after | one scalar, [`ScalarStyle::Code`] |
 //!
-//! A **code block is a value**, so it has to be a node. The filler is chosen so
-//! that the parser produces that node itself — a plain scalar with exactly the
-//! block's span — and [`install`] then gives the scalar its real text and its
-//! style. Nothing is inserted into the arena afterwards and no node's parentage
-//! is invented: the node the parser built at that position *is* the code block,
-//! and every other node is untouched.
-//!
-//! **This language never parses a block's contents.** Any syntax may appear
-//! inside one; it is compiled or executed by something else.
+//! A code block is a value, so it has to be a node. The filler is chosen so
+//! that **the parser produces that node itself** — a plain scalar with exactly
+//! the block's span — and [`install`] then gives the scalar its real text and
+//! its style. Nothing is inserted into the arena afterwards and no node's
+//! parentage is invented.
 
 use crate::ast::{Ast, NodeKind, ScalarStyle};
 use crate::span::{SourceFile, Span};

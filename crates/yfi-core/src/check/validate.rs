@@ -3,42 +3,21 @@
 
 //! `E0220`, `E0221` and `W0301` — validating concrete nodes.
 //!
-//! # Validation reads declarations, never the flattened view
+//! Each concrete node is validated against **every abstract ancestor's declared
+//! view**, never against its own flattened one, and the effective value it is
+//! compared against is read from its resolved view (D7.3). Flattening first can
+//! only confirm that the winner agrees with itself: by D4.7 a local `<<` mixin
+//! outranks the ancestor, so the very operation under test overwrites the
+//! violation.
 //!
-//! An ancestor declares `port: !!int`. A local `<<` mixin supplies
-//! `port: !!str "8080"`. By D4.7 the inclusion outranks the ancestor, so the
-//! flattened node holds a perfectly consistent `port: !!str "8080"` — the
-//! violation has been overwritten by the very operation that was supposed to be
-//! checked. Flattening first and checking after can only confirm that the
-//! winner agrees with itself.
-//!
-//! So each concrete node is validated against **every abstract ancestor's
-//! declared view**, and the effective value it is compared against is read from
-//! the node's resolved view. Both halves matter: the declaration says what must
-//! hold, the resolved view says what the node actually ends up with.
-//!
-//! # `W0301`'s input set
-//!
-//! The undeclared-field warning fires **only on a node with at least one
-//! abstract ancestor**. A concrete node with no ancestry declares its own shape
-//! and cannot deviate from it, so without that restriction the warning would
-//! fire on every field of every standalone node and be `--allow`ed into
-//! uselessness.
-//!
-//! Its input set is **project-wide**, and one consequence has to be stated
-//! honestly: an ancestor's declared view includes everything an extended
-//! reference installed on it, so **an extended reference contributing a key
-//! silences `W0301` for that key on every descendant of the base**. A typo'd
-//! contribution does not merely add a junk key to one family; it makes the junk
-//! key legitimate vocabulary everywhere. That is not fixable within the warning
-//! — it is the extended reference doing exactly what it is for — and it is the
-//! strongest argument in the design for the third operation's spelling looking
-//! different from the second's.
-//!
-//! `W0301` is asked of the keys the node **writes**, not of every key its
-//! resolved view ends up holding. A key absorbed from a shared mixin would
-//! otherwise be reported once per node that includes the mixin, at the mixin's
-//! own span, which names a line whose author did nothing wrong.
+//! `W0301` fires only on a node holding at least one abstract ancestor — a
+//! concrete node with no ancestry declares its own shape — and is asked of the
+//! keys that node **writes**, not of every key its resolved view ends up
+//! holding: a key absorbed from a shared mixin would otherwise be reported once
+//! per including node, at the mixin's own span, naming a line whose author did
+//! nothing wrong. The input set is project-wide, with the consequence D4.11
+//! states — a contributed key silences `W0301` for that key on every descendant
+//! of the base.
 
 use std::collections::HashSet;
 
@@ -233,10 +212,7 @@ fn contradicts(
 /// `W0301` — a field no abstract ancestor declares.
 ///
 /// `connections` and `definition` on an `!edge` are excepted, because they are
-/// the **language's** members and not the family's (D4.13). Without the
-/// exception an edge extending any abstract family that does not itself declare
-/// them would be warned about for writing the two members the tag requires it
-/// to write, which is the compiler reporting its own vocabulary as a typo.
+/// the **language's** members and not the family's (D4.13).
 fn undeclared(ctx: &Ctx, linked: &Linked, subject: &Subject, diagnostics: &mut Diagnostics) {
     let is_edge = edge::is_edge(ctx.interned, subject.place.0, subject.place.1);
     for field in subject.own.fields() {

@@ -4,27 +4,16 @@
 //! The scope tree and its two orthogonal axes.
 //!
 //! The tree is the **directory hierarchy**: one scope per directory, the root
-//! directory included. Files are not scopes. A file's header declares the axes
-//! and the namespace *of the directory it sits in*, which is what makes several
-//! files contributing to one namespace the ordinary arrangement rather than an
-//! error, and what makes a header-less file inherit everything from its
-//! directory scope with no special case.
+//! included, and files are not scopes (D6.1). A file's header declares the axes
+//! and the namespace *of the directory it sits in*, which is what makes a
+//! header-less file inherit everything with no special case. Each scope carries
+//! a visibility and a mutability, inherited from the parent unless a header
+//! states one; the root states both, closed (D6.4).
 //!
-//! Each scope carries a *visibility* and a *mutability*, each inherited from the
-//! parent unless a header states it. The root states both, and both are the
-//! closed value: **`private` and `immutable`**. Access and mutation are opt-in,
-//! so a scope that says nothing grants nothing.
-//!
-//! Resolution is **path-composed, never node-local**. `visible(n, o)` holds when
-//! every scope on `path(root → n)` is open to `o`; likewise `writable`. Deciding
+//! Resolution is **path-composed, never node-local** (D6.5), so each scope
+//! stores its whole root-to-self path and the predicates walk it. Deciding
 //! either axis by looking only at `n` would make an `immutable` or `private`
-//! parent mean nothing, so each scope stores its whole root-to-self path and the
-//! predicates walk it.
-//!
-//! Both axes compose by one rule: a scope is open to an observer when the scope
-//! resolves to the permissive value, **or** the observer sits inside that scope.
-//! That is why the root may be `private` without cutting the project off from
-//! itself — every scope in the project is inside the root.
+//! parent mean nothing.
 
 use yfi_syntax::{FileId, Span};
 
@@ -213,12 +202,6 @@ impl ScopeTree {
     #[must_use]
     pub fn path(&self, id: ScopeId) -> &[ScopeId] {
         self.get(id).map_or(&[], |s| &s.path)
-    }
-
-    /// The first scope claiming `namespace`, if any.
-    #[must_use]
-    pub fn by_namespace(&self, namespace: &str) -> Option<ScopeId> {
-        self.scopes.iter().find(|s| s.namespace.as_deref() == Some(namespace)).map(|s| s.id)
     }
 
     /// `root/dir/sub`, for logging and test assertions.

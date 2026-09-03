@@ -3,24 +3,12 @@
 
 //! `W0303` over a **resolved** base.
 //!
-//! D4.5's additivity rule is that a contribution ranks below everything the base
-//! already has — "below B's own keys, **its inclusions and its extensions**".
-//! Pass 4 can only test the first of those three, because the other two are
-//! resolution and resolution is this pass's. So the check is split rather than
-//! duplicated:
-//!
-//! * **pass 4** reports a contributed key the base writes directly. That is
-//!   decidable with nothing resolved, it is the common case, and it is the one
-//!   worth reporting as early as possible.
-//! * **here** reports a contributed key the base holds only through its own
-//!   `<<` or `extends` chain. Pass 4 marked those keys not-inert, so the two
-//!   sets are disjoint and no key is warned about twice.
-//!
-//! Both are the same finding and carry the same code, because the author's
-//! mistake is the same one: the contribution loses, so it does nothing, and by
-//! D4.5's identity result their own node resolves identically whether they
-//! wrote `extends: *Base` or `extends: !ref ns/Base`. `W0303` is the only local
-//! signal that someone wrote `!ref` where they meant an extension.
+//! D4.5 ranks a contribution below the base's own keys, its inclusions *and*
+//! its extensions; pass 4 can only test the first, because the other two are
+//! resolution. So the check is split rather than duplicated, over disjoint
+//! inputs and under one code (§4): pass 4 reports a contributed key the base
+//! writes directly, and this pass reports one the base holds only through its
+//! own `<<` or `extends` chain, which pass 4 marked not-inert.
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics};
 

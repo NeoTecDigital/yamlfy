@@ -18,7 +18,7 @@ use crate::front::{self, Block, Dialect, Fault};
 pub struct FileId(pub u32);
 
 /// A resolved position in a source file.
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Pos {
     /// Byte offset into the original file contents, BOM included.
     pub byte: u32,
@@ -26,6 +26,14 @@ pub struct Pos {
     pub line: u32,
     /// One-based column number, counted in characters.
     pub col: u32,
+}
+
+impl Default for Pos {
+    /// The start of a file. Written out rather than derived: `line` and `col`
+    /// are one-based, so a derived zero would render `file:0:0`.
+    fn default() -> Self {
+        Pos { byte: 0, line: 1, col: 1 }
+    }
 }
 
 /// A half-open source range, `start` inclusive and `end` exclusive.
@@ -362,14 +370,6 @@ impl SourceMap {
         let blocks = self.files[id.0 as usize].locate(&rewrite.blocks);
         self.files[id.0 as usize].blocks = blocks;
         id
-    }
-
-    /// Read `path` and register its contents as base YAML.
-    ///
-    /// # Errors
-    /// Returns [`LoadError`] if the file cannot be read or is not valid UTF-8.
-    pub fn load(&mut self, path: impl AsRef<Path>) -> Result<FileId, LoadError> {
-        self.load_as(path, Dialect::BaseYaml)
     }
 
     /// Read `path` and register its contents, read as `dialect`.

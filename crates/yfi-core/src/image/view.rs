@@ -14,29 +14,13 @@
 //! ([`ModelView::fields_readable_from`]) so that an unreadable member is absent
 //! from a result by shape rather than present as a hole.
 //!
-//! # Gated and ungated accessors
-//!
-//! Every walk that can disclose something comes in two forms, and the naming is
-//! a convention rather than a coincidence:
-//!
-//! | ungated | gated |
-//! |---|---|
-//! | [`ModelView::view`] | — (there is no partial `View`; ask for fields) |
-//! | [`ModelView::fields`] | [`ModelView::fields_readable_from`] |
-//! | [`ModelView::connections`] | [`ModelView::connections_readable_from`] |
-//!
-//! **The `_readable_from` form is the default.** Anything answering on behalf
-//! of an observer — a query, a serialisation, an API response — must take that
-//! one, because the ungated form returns the compiler's whole answer and the
-//! compiler is allowed to know things the observer is not. The ungated forms
-//! exist for the two callers that legitimately have no observer: the compiler's
-//! own tests, which assert what was *resolved*, and tooling that is the project
-//! rather than a reader of it.
-//!
-//! They keep the shorter names because they are the primitives the gated ones
-//! are built from — `fields_readable_from` is `fields` plus a filter — and a
-//! reader following the definition should not have to step through a rename to
-//! see that the predicate is pass 5's and is applied in exactly one place.
+//! Every walk that can disclose something comes in two forms, and
+//! **`_readable_from` is the default**: anything answering on behalf of an
+//! observer must take it, because the ungated form returns the compiler's whole
+//! answer and the compiler is allowed to know things the observer is not. The
+//! ungated forms exist for the two callers that legitimately have no observer —
+//! the compiler's own tests and tooling that *is* the project — and keep the
+//! shorter names because they are the primitives the gated ones filter.
 
 use yfi_syntax::{FileId, NodeId, Span};
 
@@ -231,11 +215,8 @@ impl<'a> ModelView<'a> {
     /// [`ModelView::connections_readable_from`] for anything answering on
     /// behalf of one.
     ///
-    /// An endpoint may itself be an edge: an edge is a node, so an edge over
-    /// edges is a legal and intended shape, and it is what composing relations
-    /// out of relations looks like. The connection graph may therefore cycle —
-    /// only *inheritance* cycles are illegal — so a traversal built on this
-    /// carries a visited set (spec §0).
+    /// An endpoint may itself be an edge (D4.13), so the connection graph may
+    /// cycle and a traversal built on this carries a visited set (§0).
     pub fn connections(self) -> impl Iterator<Item = ModelView<'a>> {
         let image = self.image;
         self.connection_edges().filter_map(move |held| image.model(held.to))
@@ -255,33 +236,20 @@ impl<'a> ModelView<'a> {
 
     /// The endpoints an observer in `observer` may see, in written order.
     ///
-    /// Two gates, both already written and neither restated: the `connections`
-    /// **member** must be readable from there ([`FieldView::is_readable_from`],
-    /// pass 5's predicate), and the endpoint must be a node that observer can
-    /// see at all ([`ModelView::is_visible_from`], the scope-level gate). There
-    /// is no third predicate.
+    /// Two gates, both already written and neither restated (D4.13): the
+    /// `connections` **member** must be readable from there
+    /// ([`FieldView::is_readable_from`], pass 5's predicate), and the endpoint
+    /// must be a node that observer can see at all
+    /// ([`ModelView::is_visible_from`], the scope-level gate). There is no
+    /// third predicate.
     ///
     /// Filtered as it walks, so an endpoint the observer may not see is absent
     /// by **shape**. Its position is not reused: [`ModelView::connection`]
-    /// still answers by handle over the *written* positions, and a filtered
-    /// result never renumbers the endpoints beside the one it dropped.
+    /// still answers by handle over the *written* positions.
     ///
-    /// # Why both, when one implies the other in a clean project
-    ///
-    /// In a project that raised no `E0216`, **the member gate is the one that
-    /// bites and the node gate can never fire behind it.** `E0216` forbids an
-    /// edge from naming a target its own scope cannot see, so every closed
-    /// scope on an endpoint's path encloses the edge's scope; and the member
-    /// gate opens either because the observer sits inside the edge's scope —
-    /// in which case it sits inside every closed scope above it too — or
-    /// because the edge's scope is reachable from the root, in which case no
-    /// closed scope but the root is on the endpoint's path either. Both
-    /// branches make the endpoint visible.
-    ///
-    /// The node gate is kept for the case where that premise is *false*: a
-    /// project that raised `E0216` still emits (only a cycle refuses emission),
-    /// and a broken project must not become the way to read what a scope
-    /// declined to publish. `projects/edge-invisible-connection` is that case.
+    /// The second gate is redundant only while the project raised no `E0216`;
+    /// such a project still emits, and must not become the way to read what a
+    /// scope declined to publish. `projects/edge-invisible-connection`.
     pub fn connections_readable_from(
         self,
         observer: ScopeId,
@@ -307,16 +275,9 @@ impl<'a> ModelView<'a> {
     /// The `!edge` nodes an observer in `observer` may be told relate this
     /// node, in the reverse index's order.
     ///
-    /// The counterpart of [`ModelView::connections_readable_from`], and it must
-    /// exist: "what relates this public node" asked without a gate hands the
-    /// asker a **private** edge, and hands it to them by name. It is the same
-    /// two predicates read from the other end — the edge must be a node this
-    /// observer can see, and the edge's `connections` must be readable from
-    /// there, because an edge whose endpoints are undisclosed has not disclosed
-    /// that this node is one of them.
-    ///
-    /// Filtered as it walks, so an edge the observer may not be told about is
-    /// absent by shape.
+    /// The counterpart of [`ModelView::connections_readable_from`]: the same
+    /// two predicates read from the other end (D4.13), filtered as it walks, so
+    /// an edge the observer may not be told about is absent by shape.
     pub fn incident_edges_visible_from(
         self,
         observer: ScopeId,

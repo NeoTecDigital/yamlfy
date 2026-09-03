@@ -5,7 +5,8 @@
 
 mod common;
 
-use yfi_core::{intern, NodeOrder, TagKind};
+use yfi_core::link::{source_order, SourceOrder};
+use yfi_core::{intern, TagKind};
 use yfi_syntax::{NodeId, NodeKind};
 
 #[test]
@@ -188,21 +189,24 @@ fn every_node_records_the_scope_path_its_axes_compose_over() {
 }
 
 #[test]
-fn the_total_order_is_file_rank_then_document_then_node() {
+fn the_total_order_is_file_rank_then_document_then_written_position() {
+    // The arena is post-order, so scanning it is *not* written order. That is
+    // why the project orders by `source_order` and not by the node index.
     let project = common::open_clean("nested-namespaces");
     let interned = intern(&project);
-    let mut previous: Option<NodeOrder> = None;
+    let mut scanned: Vec<SourceOrder> = Vec::new();
     for file in project.files() {
         for index in 0..file.ast.nodes().len() {
-            let Some(order) = interned.order(file.id, NodeId(index as u32)) else { continue };
-            assert_eq!(order.file, file.rank);
-            if let Some(previous) = previous {
-                assert!(previous < order, "{previous:?} must precede {order:?}");
-            }
-            previous = Some(order);
+            let node = NodeId(u32::try_from(index).expect("arena index"));
+            let Some(order) = source_order(&project, &interned, file.id, node) else { continue };
+            assert_eq!(order.file, file.rank, "the file component is the file's rank");
+            scanned.push(order);
         }
     }
-    assert!(previous.is_some(), "the project has nodes");
+    assert!(!scanned.is_empty(), "the project has nodes");
+    let mut written = scanned.clone();
+    written.sort();
+    assert_ne!(scanned, written, "arena order is post-order, not written order");
 }
 
 #[test]

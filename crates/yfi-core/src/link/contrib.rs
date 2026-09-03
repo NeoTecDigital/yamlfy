@@ -1,39 +1,18 @@
 // Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Extended-reference contributions: `E0214` and `W0303`.
+//! Extended-reference contributions: `E0214` and `W0303` (D4.11).
 //!
-//! An extended reference installs `own(A)` — A's literal keys with its clauses
-//! removed — onto the base, and does so **additively**: the contribution ranks
-//! below everything the base already has (D4.5). Nothing is installed here;
-//! pass 5 obeys that rule. Pass 4 records what it needs to and reports the two
-//! things that are decidable without resolving anything.
-//!
-//! **`E0214` — conflicting extended references.** Two contributions of one key
-//! to one base with different values. This is an error rather than a resolution
-//! by order because nothing in the source ranks two files' claims on a base
-//! except their path names (D6.2), and a graph whose values depend on a
-//! filename is what D1.8 refuses. Two contributions of the *same* value are
-//! idempotent and stay legal.
-//!
-//! **`W0303` — inert contribution.** A contributed key the base already
-//! defines. By D4.5 it loses, so it does nothing — and by D4.5's identity
-//! result the author's own node resolves identically whether they wrote
-//! `extends: *Base` or `extends: !ref ns/Base`. `W0303` is therefore **the only
-//! local signal that someone wrote `!ref` where they meant an extension**,
-//! which is what earns it a code rather than silence. It is a warning because a
-//! contribution partly inert and partly effective is legitimate, and
-//! `--deny W0303` is available to projects that disagree.
-//!
-//! *What "the base already defines" means here.* It is `own(base)`: the keys
-//! the base writes directly. A key the base holds only through its own `<<` or
-//! `extends` chain is not caught, because deciding that is resolution and
-//! resolution is pass 5's.
+//! Nothing is *installed* here — pass 5 is what obeys D4.5's additivity — and
+//! only the two findings decidable without resolving anything are reported. So
+//! "the base already defines" means `own(base)`, the keys the base writes
+//! directly; a key it holds only through its own `<<` or `extends` chain is
+//! `check`'s half of `W0303`, over disjoint input (§4).
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, NodeId, Pos, Span};
+use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, NodeId};
 
 use super::clause::{Clause, ClauseKind, OperandForm};
 use super::keys::{own_keys, OwnKey};
@@ -141,16 +120,16 @@ fn inert(
     let name = ctx.interned.symbols().resolve(key.name).unwrap_or_default();
     Diagnostic::new(
         Code::InertContribution,
-        span_of(ctx, contribution.file, key.key),
+        ctx.span_of(contribution.file, key.key),
         format!(
             "`{name}` is contributed to `{path}`, which already defines it; an extended \
              reference may add a key to a base but never change one, so this does nothing"
         ),
     )
-    .with_note("the base defines it here", Some(span_of(ctx, contribution.base.0, existing.key)))
+    .with_note("the base defines it here", Some(ctx.span_of(contribution.base.0, existing.key)))
     .with_note(
         "contributed through this extended reference",
-        Some(span_of(ctx, contribution.file, contribution.operand)),
+        Some(ctx.span_of(contribution.file, contribution.operand)),
     )
 }
 
@@ -212,23 +191,13 @@ fn conflict(
     let base = table.get(path).map(|definition| definition.span);
     Diagnostic::new(
         Code::ConflictingExtension,
-        span_of(ctx, later.0.file, later.1.key),
+        ctx.span_of(later.0.file, later.1.key),
         format!(
             "two extended references contribute `{name}` to `{path}` with different values; \
              nothing ranks two files' claims on a base except their filenames, so this \
              cannot be ordered"
         ),
     )
-    .with_note("the other contribution is here", Some(span_of(ctx, first.0.file, first.1.key)))
+    .with_note("the other contribution is here", Some(ctx.span_of(first.0.file, first.1.key)))
     .with_note("both extend this definition", base)
-}
-
-/// A node's span. The fallback is unreachable — every node named here came
-/// from an arena this pass just walked — and is an empty span in the right file
-/// rather than a panic, because a diagnostic that cannot be placed must still
-/// be reported.
-fn span_of(ctx: &Ctx, file: FileId, node: NodeId) -> Span {
-    ctx.ast(file)
-        .and_then(|ast| ast.nodes().get(node.index()).map(|held| held.span))
-        .unwrap_or_else(|| Span::empty(file, Pos::default()))
 }

@@ -4,33 +4,22 @@
 //! What the files of one directory jointly declare about its scope, and when
 //! that becomes `E0230`.
 //!
-//! # The rule, precisely
-//!
-//! A scope is a directory. Every header in that directory declares *that*
-//! scope, so several files contributing to one namespace is the ordinary
-//! arrangement — a namespace split across files, like a package — and is
-//! silent.
-//!
-//! `E0230` is raised for a **conflict**, never for repetition. Two declarations
-//! bound to the same scope conflict when, for one of the three declared
-//! properties — `namespace`, `visibility`, `mutability` — both state a value and
-//! the two values differ. Consequences of that wording, each deliberate:
-//!
-//! * Restating the same value is silent. Two files both saying
-//!   `visibility: public` agree about the scope; there is nothing to report.
-//! * One stating and the other omitting is silent. Omission means "inherit",
-//!   which is the absence of a claim, not a competing one.
-//! * `version` is excluded. It describes the file's own header format, not the
-//!   scope's identity, so two files may state different versions without
-//!   disagreeing about anything scoped.
+//! Every header in a directory declares *that* directory's scope (D6.1), so
+//! several files contributing to one namespace is the ordinary arrangement and
+//! is silent. `E0230` is raised for a **conflict**, never for repetition: two
+//! claims conflict when, for one of the three declared properties —
+//! `namespace`, `visibility`, `mutability` — both state a value and the two
+//! values differ. Restating a value is therefore silent, and so is omission,
+//! which means "inherit" and is the absence of a claim rather than a competing
+//! one. `version` is excluded: it describes the file's own header format, not
+//! the scope's identity.
 //!
 //! The first claim in discovery order wins and is the one the scope keeps, so
-//! the resolved tree does not depend on which of the conflicting files is fixed.
-//! The diagnostic points at the later declaration and notes the earlier.
+//! the resolved tree does not depend on which of the conflicting files is
+//! fixed; the diagnostic points at the later declaration and notes the earlier.
 //!
-//! A second, separate conflict lives in [`check_namespace_uniqueness`]: one
-//! namespace naming two different scopes. That is not repetition either — a
-//! namespace that resolves to two directories cannot be a resolution target.
+//! The second, separate conflict — one namespace naming two scopes — lives in
+//! [`check_namespace_uniqueness`].
 
 use std::collections::HashMap;
 

@@ -24,7 +24,6 @@ use yfi_syntax::{Ast, FileId, NodeId};
 
 use crate::discover::{FileClass, Project};
 use crate::member::{self, MemberFlags};
-use crate::order::NodeOrder;
 use crate::scope::ScopeId;
 use crate::symbol::{Symbol, SymbolTable};
 use crate::tags::{classify, TagKind};
@@ -56,17 +55,12 @@ pub struct FileIndex {
 /// A node that names a member of the collection holding it: a mapping key, or
 /// an item of a sequence.
 ///
-/// **A member is anything nested inside something else, exactly as YAML
-/// nests, and the discriminator is the file class.** A `.yfy` is not a data
-/// store — everything nested in it is a member of its parent, and the data is
-/// what is *evaluated from* that structure. A `.yaml` is base YAML data and
-/// declares no members at all (D6.6).
+/// **A member is anything nested inside something else, and the discriminator
+/// is the file class**: a `.yaml` declares no members at all (D6.6).
 ///
-/// The name is **interned after the flags are taken off it**, so every later
-/// pass — key lookup, `E0218`'s member addressing, `W0301`, `E0220` — sees the
-/// member's name and never the prefix. The prefix alone is read from a plain,
-/// untagged scalar, which is D4.2's escape one level down: quoting a name
-/// keeps the words in it, and does not stop it being a member.
+/// The name is interned **after the flags are taken off it**, so every later
+/// pass — key lookup, `E0218`, `W0301`, `E0220` — sees the member's name and
+/// never the prefix.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Member {
     /// The interned name, prefix removed.
@@ -154,12 +148,6 @@ impl Interned {
         self.index(file)?.tag_of.get(node.index()).copied().flatten().map(|(kind, _)| kind)
     }
 
-    /// A node's interned tag suffix, if it carries a tag.
-    #[must_use]
-    pub fn tag_suffix(&self, file: FileId, node: NodeId) -> Option<Symbol> {
-        self.index(file)?.tag_of.get(node.index()).copied().flatten().map(|(_, symbol)| symbol)
-    }
-
     /// The interned name of a node that names a member.
     #[must_use]
     pub fn key_of(&self, file: FileId, node: NodeId) -> Option<Symbol> {
@@ -187,14 +175,6 @@ impl Interned {
     pub fn scope_path_of(&self, file: FileId, node: NodeId) -> Option<&[ScopeId]> {
         let index = self.index(file)?;
         (node.index() < index.len()).then_some(index.scope_path.as_slice())
-    }
-
-    /// A node's position in the project's total order.
-    #[must_use]
-    pub fn order(&self, file: FileId, node: NodeId) -> Option<NodeOrder> {
-        let index = self.index(file)?;
-        let document = index.document_of.get(node.index()).copied().flatten()?;
-        Some(NodeOrder { file: index.rank, document, node: u32::try_from(node.index()).ok()? })
     }
 }
 
@@ -317,12 +297,10 @@ fn link_children(
 
 /// Read a scalar as a member name, taking its flags off it.
 ///
-/// Every scalar nested in a Yamlfication source file names a member — a
-/// mapping key and a sequence item alike, because a member is what nesting
-/// *is*. What quoting or tagging changes is only the **prefix**: it is read
-/// from a plain, untagged scalar, which is the escape D4.2 already gives for
-/// `extends` and D1.1 for `<<`, so `"pub literal"` is a member called
-/// `pub literal` rather than a public one called `literal`.
+/// Every scalar nested in a Yamlfication source file names a member, mapping
+/// key and sequence item alike. What quoting or tagging changes is only the
+/// **prefix** — D4.2's escape one level down — so `"pub literal"` is a member
+/// called `pub literal` rather than a public one called `literal`.
 fn read_key(
     ast: &Ast,
     node: NodeId,

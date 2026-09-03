@@ -269,9 +269,8 @@ fn emission_is_refused_when_pass_five_found_an_inheritance_cycle() {
 
 #[test]
 fn ids_are_assigned_in_the_order_the_project_is_written() {
-    // `NodeOrder`'s node component is the arena index, which is post-order and
-    // not textual order. Anything user-visible is ordered by where it is
-    // written instead.
+    // The arena index is post-order and not textual order. Anything
+    // user-visible is ordered by where it is written instead.
     let fixture = open("emit-graph");
     let image = image(&fixture);
     let orders: Vec<_> = image.nodes().map(|held| held.order()).collect();

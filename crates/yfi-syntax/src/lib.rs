@@ -3,44 +3,26 @@
 
 //! Yamlfication's syntax layer: YAML events in, arena AST and diagnostics out.
 //!
-//! # Why events and not a loader
+//! **An alias is a reference, never a copy** (§0), so this crate consumes the
+//! event stream rather than a loader and stores an alias as an
+//! [`ast::AliasRef`] into a flat `u32`-indexed arena. Every node carries a
+//! [`span::Span`] with a byte offset and one-based line and column, so every
+//! diagnostic can print `file:line:col`; diagnostics accumulate, and nothing
+//! returns on the first problem.
 //!
-//! A document-level YAML loader returns an owned recursive enum. In Rust that
-//! type *is* a tree, so it cannot represent a cyclic alias graph at all; its
-//! only options are to expand aliases by deep copy or to diverge. Yamlfication
-//! is a graph database, so cycles are the point, not an edge case. This crate
-//! therefore consumes the event stream, where an alias is reported as an anchor
-//! id and nothing else, and stores it as a [`ast::AliasRef`] pointing into a
-//! flat arena indexed by `u32`.
-//!
-//! # What it guarantees
-//!
-//! * A cyclic alias graph parses without copying, recursing or diverging.
-//! * Every node carries a [`span::Span`] with a byte offset, a one-based line
-//!   and a one-based column, so every diagnostic can print `file:line:col`.
-//! * Diagnostics accumulate. Nothing returns on the first problem.
-//!
-//! # Two dialects, one parser
-//!
-//! `.yfy` is not YAML. `//`, `<?-- … --!>` and `<?-- … -->` are constructs a
-//! YAML parser rejects, so a [`Dialect::Yamlfication`] file is rewritten by
-//! [`front`] before the parser reads it — character for character, so that
-//! every span still points at the file the author wrote. A
-//! [`Dialect::BaseYaml`] file gets none of that and reaches the parser exactly
-//! as written (D6.6).
-//!
-//! # One file, and one exception
+//! `.yfy` is not YAML — `//`, `<?-- … --!>` and `<?-- … -->` are constructs a
+//! YAML parser rejects — so a [`Dialect::Yamlfication`] file is rewritten by
+//! [`front`] before the parser reads it, character for character, leaving every
+//! span pointing at the file the author wrote. A [`Dialect::BaseYaml`] file
+//! reaches the parser exactly as written (D6.6).
 //!
 //! An [`ast::Ast`] is one file's arena and stays one. The single thing that
-//! crosses a file boundary is a **binding**: [`parse::parse_with_imports`]
-//! takes the definitions a header imported and installs them into every
-//! document of the file being parsed (D6.7), so an ordinary alias reaches them.
-//! Such an [`anchor::AnchorDef`] carries the span it was written at, in the
-//! file that wrote it, and names a node of *that* file's arena — which is why
-//! [`ast::Ast::alias_target`] answers `None` for one and
-//! [`ast::Ast::alias_binding`] answers with a [`span::FileId`] as well as a
-//! node. The crate still reads no directory, resolves no path and knows nothing
-//! of projects; it is told what to bind.
+//! crosses a file boundary is a **binding**, installed into every document by
+//! [`parse::parse_with_imports`] (D6.7). Such an [`anchor::AnchorDef`] names a
+//! node of the *writing* file's arena, which is why [`ast::Ast::alias_target`]
+//! answers `None` for one and [`ast::Ast::alias_binding`] answers with a
+//! [`span::FileId`] as well as a node. The crate still reads no directory,
+//! resolves no path and knows nothing of projects; it is told what to bind.
 //!
 //! # Example
 //!

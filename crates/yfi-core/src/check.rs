@@ -1,64 +1,24 @@
 // Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Pass 5 — checking.
+//! Pass 5 — checking. Pass 4 answers *what points at what, and is that legal to
+//! write*; pass 5 answers *what does it mean*, and *is what it means allowed*.
 //!
-//! Pass 4 answers *what points at what, and is that legal to write*. Pass 5
-//! answers *what does it mean*, and then *is what it means allowed*:
+//! `E0212` over the stratified inheritance graph (D1.8, D4.10), resolution in
+//! D4.7's precedence order, `E0217` (D4.12), the member gates (D4.12, D6.5),
+//! `E0220`/`E0221`/`W0301` against declared ancestor views, the three `!edge`
+//! codes over a resolved `connections` (D4.13), and the half of `W0303` that
+//! needs a resolved base (D4.11). `E0216` is pass 4's — see [`reach`] for why
+//! the two axes live in different passes. `W0302` is deferred, not implemented.
 //!
-//! * **`E0212`** — Tarjan's algorithm over the stratified inheritance graph,
-//!   reported once per strongly connected component, primary span textually
-//!   first and notes naming the **forward** edges that closed it;
-//! * **resolution** — every node's view, composed in D4.7's precedence order
-//!   with each clause consumed where it is written (D4.9);
-//! * **`E0217`** — what a `!ref` is allowed to change. Its sibling `E0216` —
-//!   what a path is allowed to *reach* — is pass 4's, raised inside path
-//!   resolution so that an invisible target resolves to nothing; see
-//!   [`reach`] for why the two axes live in different passes;
-//! * **member gates** — each member's two axes, declared by its `pub`/`mut`
-//!   prefix and composed with its scope's (D4.12, D6.5);
-//! * **`E0220`, `E0221`, `W0301`** — every concrete node validated against its
-//!   abstract ancestors' *declared* views, never against its own flattened one;
-//! * **`E0223`, `E0224`, `E0225`** — what each `!edge` node relates, read off
-//!   its resolved view because `connections` may be inherited (D4.13);
-//! * **`W0303`** over a resolved base, which pass 4 could only test against the
-//!   base's own keys.
+//! # The two `Diagnostics`
 //!
-//! `W0302` (inconsistent inheritance order) is deliberately deferred and is not
-//! implemented here.
-//!
-//! # Recovery is not a semantic
-//!
-//! When `E0212` fires, the pass makes the graph acyclic by depth-first search in
-//! the project's textual order and drops each back edge, so every node still has
-//! a defined view, the walk terminates, and the pass never has to bail. **That
-//! recovered value is not a language semantic and is never emitted: compilation
-//! fails whenever `E0212` was raised**, which [`Checked::is_cyclic`] is how a
-//! caller asks.
-//!
-//! Nothing read off it is emitted either. A finding derived from the recovered
-//! view is a claim about a program that does not exist, and `W0303` was the
-//! proof: with `Base extends Patch` and `Patch extends: !ref Base`, recovery
-//! drops one edge, the surviving one carries the contributed key into the base,
-//! and the warning then reported the contribution as inert *because the base
-//! already inherits it* — with a note pointing at the very line contributing
-//! it. Nothing an author could do would satisfy that, because the inheritance
-//! it names is the compiler's own repair.
-//!
-//! So `E0212`, and the two gates that read no view (`E0217` and the pass-4
-//! visibility gate ahead of it), are reported unconditionally; `W0303`,
-//! `E0220`, `E0221`, `W0301` and the three `!edge` codes are collected into a
-//! second [`Diagnostics`] and folded in only when the graph was acyclic. The
+//! D1.8 withholds every finding read off a recovered view, so the pass collects
+//! them into a second [`Diagnostics`] and folds it in only when the graph was
+//! acyclic; findings that read no view go into the first unconditionally. The
 //! views and the [`Edges`] are still **built** either way — a caller that wants
 //! to inspect a broken project can, and [`Checked::is_cyclic`] tells it what it
 //! is looking at — only nothing is *reported* from them.
-//!
-//! # Cyclic data stays legal
-//!
-//! Only cycles through **inheritance** edges are rejected. A cycle in the data
-//! graph is legal and is the point of the system;
-//! `fixtures/cycles/alias-cycle-with-merge-dag.yml` is the fixtured case and is
-//! clean through this pass.
 //!
 //! # Example
 //!
@@ -111,11 +71,6 @@ impl Checked {
     #[must_use]
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
-    }
-
-    /// Take the diagnostics so the caller can fold them into the project's.
-    pub fn take_diagnostics(&mut self) -> Diagnostics {
-        std::mem::take(&mut self.diagnostics)
     }
 
     /// Whether the inheritance graph held a cycle.
@@ -208,9 +163,8 @@ pub fn check_with(
     let order = resolve::every_holder(&ctx);
     let views = resolve::resolve(&ctx, linked, &dropped, &order);
     reach::reach(&ctx, linked, &mut diagnostics);
-    // Everything below reads a **resolved** view, so everything below is
-    // collected apart and kept only when the graph was acyclic. See "Recovery
-    // is not a semantic" above.
+    // Everything below reads a **resolved** view, so everything below goes into
+    // the second `Diagnostics`.
     let mut derived = Diagnostics::with_severities(severities);
     inert::inert(&ctx, linked, &views, &mut derived);
     validate::validate(&ctx, linked, &views, &dropped, &order, &mut derived);

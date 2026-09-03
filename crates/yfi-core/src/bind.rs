@@ -13,37 +13,21 @@
 //! which is the only way to learn what the file imports. The second is given
 //! the imported names and is the one that is kept.
 //!
-//! # What crosses, and what does not
-//!
-//! * **Only a file's own definitions cross.** [`exports_of`] skips every
-//!   imported binding, so importing `b` brings what `b` wrote and never what
-//!   `b` imported. That is D4.9 at file level, and it is the condition the
-//!   legality of import cycles rests on (D6.7).
-//! * **Import order is authored.** `file.imports` is the header's sequence in
-//!   written order, so two imports defining one name shadow deterministically —
-//!   `W0300`, both spans, last one winning (D2.1, D5.1).
-//! * **An import is not a visibility grant.** Reach is composed on the imported
-//!   node's own canonical path, so a definition the importer cannot see is
-//!   never installed and the alias to it fails as an unknown anchor. The
-//!   *diagnosis* is `E0241` and belongs to `discover` — see [`crate::imports`]
-//!   for why it is raised there and not here, where a cyclic component would
-//!   report it once per rebinding round.
-//! * **Nothing is re-homed.** The installed definition keeps the span it was
-//!   written at, in the file it was written in, so every diagnostic about it
-//!   points at the exporting file's real line and column.
-//!
-//! # Order of work
+//! Only a file's own definitions cross — [`exports_of`] skips every imported
+//! binding — import order is the header's written order, an import is not a
+//! visibility grant, and nothing is re-homed: an installed definition keeps the
+//! span it was written at, in the file that wrote it (D6.7). The diagnosis of
+//! an unreachable import is `E0241` and belongs to [`crate::imports`], not
+//! here, where a cyclic component would report it once per rebinding round.
 //!
 //! Files are bound one strongly connected component of the import graph at a
-//! time, in the order Tarjan closes them, which is imports-first. An acyclic
-//! file therefore sees its imports in final form on the first attempt and is
-//! parsed exactly twice in total. Inside a genuine import cycle there is no
-//! such order, so the component is rebound until its exported names stop
-//! moving — see [`bind`] for the seed the iteration starts from, why it is
-//! needed, and why the loop ends.
+//! time, in the order Tarjan closes them, which is imports-first: an acyclic
+//! file sees its imports in final form on the first attempt and is parsed
+//! exactly twice in total. A genuine cycle has no such order and is rebound
+//! until its exported names stop moving — see [`bind`].
 //!
-//! The node an imported definition names is filled in last, by [`rebind`],
-//! once every file's parse is final. Doing it during the parse would capture a
+//! The node an imported definition names is filled in last, by [`rebind`], once
+//! every file's parse is final. Doing it during the parse would capture a
 //! [`NodeId`] into an arena a later round may replace.
 
 use std::collections::HashMap;
@@ -85,22 +69,12 @@ pub(crate) struct Inputs<'a> {
 ///
 /// # The cyclic case, and why it iterates
 ///
-/// A file's export set is read off a parse, and a parse stops at the first
-/// alias it cannot bind — an unknown alias is a *scan* error, so recovery
-/// resumes only at the next document boundary and **every anchor written after
-/// that alias is lost**. For a member of an import cycle the first cross-file
-/// alias is exactly such an alias, because the other side is not bound either.
-/// Seeding the iteration from those parses therefore seeds it from ∅ for any
-/// member whose anchors are written after its aliases, and ∅ is a fixed point:
-/// nothing to install, nothing new to parse, nothing ever grows. Whether a
-/// cycle compiled would then depend on where in a file its anchors happen to
-/// sit, which is not a rule anyone could follow.
-///
-/// So a cyclic component is seeded from [`yfi_syntax::anchor_names`] — the
-/// `&name` tokens read straight out of each member's text. That is an
-/// over-approximation and it is used as a **prelude, never as an answer**:
-/// round 0 installs it so each member's parse can reach the end of the file,
-/// and that parse's own definitions immediately replace the seed.
+/// A member's parse stops at its first cross-file alias, so seeding from those
+/// parses seeds from ∅ — and ∅ is a fixed point (D6.7). A cyclic component is
+/// therefore seeded from [`yfi_syntax::anchor_names`], the `&name` tokens read
+/// straight out of each member's text, used as a **prelude, never an answer**:
+/// round 0 installs it so each member's parse reaches the end of the file, and
+/// that parse's own definitions immediately replace the seed.
 ///
 /// # Termination
 ///

@@ -3,73 +3,20 @@
 
 //! `E0217` — what a `!ref` may change.
 //!
-//! The two reserved keyword pairs — `private`/`public` and
-//! `mutable`/`immutable` — answer the two halves of "allowed" between them, and
-//! neither answers it alone. They are asked in two different passes, and which
-//! pass each belongs to is a semantic decision rather than a scheduling one:
+//! The two reserved keyword pairs answer the two halves of "allowed" and are
+//! asked in two different passes; which pass each belongs to is a semantic
+//! decision rather than a scheduling one (D4.12). **`E0216` — not visible** —
+//! is pass 4's, asked inside path resolution ([`crate::link::path`]) in front
+//! of the lookup, so an invisible landing resolves to nothing and no reference
+//! reaches this pass for `E0217` to be asked about. **`E0217` — not writable** —
+//! is asked here, of a target that already resolved whose path carried `!ref`.
 //!
-//! * **`E0216` — not visible.** Asked in **pass 4**, inside path resolution
-//!   ([`crate::link::path`]), before the landing is searched for a name and
-//!   before any `.` member is addressed.
-//! * **`E0217` — not writable.** Asked here, in pass 5, of a target that
-//!   already resolved. The path carries `!ref`, which declares mutation intent,
-//!   and the target sits in a scope this one may not write. The fix is a
-//!   different keyword — or the plain path, which asks for nothing.
-//!
-//! # Why visibility is not asked here
-//!
-//! It used to be, and that was a leak. Resolution ran first, so
-//! `vault/Secret.password`, `vault/Secret.nosuch` and `vault/NoSuchNode`
-//! against one private scope earned three *distinguishable* answers — `E0216`
-//! whose note printed the definition's file, line and column; `E0218`, "the
-//! node it names does not hold `nosuch`"; and `E0213`, "no definition called
-//! `NoSuchNode`". Between them an outsider enumerates a private scope's node
-//! names and each node's member names, which is precisely the access D4.12 says
-//! it has none of: *"If B is private and outside A's scope, A has no access to B
-//! at all — not its members, not its public surface, not its name"*.
-//!
-//! A gate that only decorates the diagnostic is not a gate. So the question
-//! moved to the only place that closes it — in front of the lookup — and an
-//! invisible landing now resolves to **nothing**. That is also what makes the
-//! ordering structural instead of conventional: a reference this pass sees at
-//! all is one whose target is already in view, so `E0217` can no longer be
-//! reported about a scope whose `visibility:` was the real obstacle.
-//!
-//! Nothing downstream sees an invisible target either — no `is_a` edge, no
-//! ancestry, no `E0220` blaming a base the reader may not have.
-//!
-//! # Why mutability is a gate rather than a record
-//!
-//! An extended reference **is a write**, performed at compile time: it installs
-//! `own(A)` on a base that every other B in the program then carries. Phase 1
-//! shipped no runtime writer, and the axis was therefore recorded and
-//! propagated but never consulted. `!ref` is what consults it. The predicate is
-//! [`ScopeTree::not_writable_by`], the composed analogue of the one the
-//! visibility gate uses, so the two axes can never disagree about who blocked
-//! what.
-//!
-//! # Why it is its own code and not `E0241`
-//!
-//! `E0241` is raised by `discover` about an `imports:` entry — a header line,
-//! with a header's fix. This is raised about a path written in the body of a
-//! document, and an author told "import target not visible" about a line
-//! containing no import has been sent to the wrong place.
-//!
-//! # `brute` forces the second gate and never the first
-//!
-//! A `!ref` written under a `brute` member (D6.6) performs its write even where
-//! `E0217` would refuse it, and the refusal becomes `W0304` — the write stands
-//! and the forcing is recorded. That asymmetry is the point: mutability is a
-//! *policy* about what may be changed, and a policy is the kind of thing an
-//! author can be entitled to override in the open. Visibility is not. `E0216`
-//! says you may not have this at all, and a member cannot grant itself sight of
-//! what it was never shown, so `brute` is never consulted for it. Since `E0216`
-//! moved into resolution that is structural rather than ordered: an invisible
-//! target never resolves, so this pass never sees it and `brute` has nothing to
-//! force.
-//!
-//! A path naming a definition **in its own file** needs neither check: a file
-//! can always see and always write what it wrote.
+//! The predicate is [`ScopeTree::not_writable_by`], the composed analogue of
+//! the one the visibility gate uses, so the two axes can never disagree about
+//! who blocked what. It is not `E0241`, which `discover` raises about a header
+//! line and answers with a header's fix. A path naming a definition in its own
+//! file needs neither check. The fix is a different keyword — `brute`, below —
+//! or the plain path, which asks for nothing.
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, NodeId, Span};
 

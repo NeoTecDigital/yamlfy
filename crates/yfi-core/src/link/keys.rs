@@ -3,20 +3,16 @@
 
 //! What a node writes for itself, and what counts as an inheritance key.
 //!
-//! `own(A)` is A's literal keys **with its clauses removed** (D4.9): a clause is
-//! resolved in the mapping that writes it and then ceases to exist. It appears
-//! in no resolved view and is never re-applied through a further clause, so the
+//! `own(A)` is A's literal keys **with its clauses removed** (D4.9), so the
 //! keys an extended reference contributes never include the `extends` or `<<`
 //! entry that carried it.
 //!
-//! # Two spellings of a member list
-//!
 //! A node's members may be written as a **mapping**, where each key names a
-//! member and its value declares it (D7.3), or as a **sequence**, where each
-//! plain scalar item names a member and declares nothing about it — D7.3's
-//! third state, spelled without the colon. Both are read here, and a member is
-//! a member either way; only the mapping form can state a declaration, which is
-//! why the sequence form is the shorter one rather than a second model.
+//! member and its value declares it, or as a **sequence**, where each plain
+//! scalar item names a member and declares nothing — D7.3's third state,
+//! spelled without the colon. Both are read here; only the mapping form can
+//! state a declaration, which is why the sequence form is the shorter spelling
+//! rather than a second model.
 
 use std::collections::HashMap;
 

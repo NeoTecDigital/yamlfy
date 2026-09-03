@@ -3,12 +3,8 @@
 
 //! Visibility over an edge, in both directions — D4.13.
 //!
-//! An edge's endpoints are gated by the `connections` **member**, which is a
-//! member like any other and is therefore private by default (D4.12), and the
-//! reverse question — *what relates this node* — is gated by the same two
-//! predicates. Both directions are one concern and are asserted together, so a
-//! change to one that forgets the other fails here rather than in a file about
-//! arity.
+//! Both directions are one concern and are asserted together, so a change to
+//! one that forgets the other fails here rather than in a file about arity.
 
 mod common;
 

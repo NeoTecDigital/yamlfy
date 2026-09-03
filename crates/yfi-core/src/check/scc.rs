@@ -147,9 +147,7 @@ impl Tarjan<'_> {
 ///
 /// Dropping exactly these makes the graph acyclic (D1.8's recovery), so every
 /// node has a defined resolved view and the later checks can report their own
-/// findings instead of cascading. The recovered value is **not** a language
-/// semantic and is never emitted: compilation fails whenever `E0212` was
-/// raised.
+/// findings instead of cascading.
 pub(crate) fn back_edges(graph: &Graph, order: &[VertexId]) -> HashSet<EdgeId> {
     let mut walk = Walk {
         graph,

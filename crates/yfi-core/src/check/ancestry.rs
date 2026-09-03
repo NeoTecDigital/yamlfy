@@ -3,26 +3,14 @@
 
 //! The `is_a` axis, and which nodes are abstract.
 //!
-//! **Extensions and extended references create ancestry; inclusions do not.**
-//! `A << B` says *A has a B in it* — it creates no is-a relationship and no
-//! query over the `is_a` axis will ever return A for B. A node that includes
-//! `water` is not a water, so a mixin's keys are not declarations of A's family
-//! and must not be validated against.
+//! **Extensions and extended references create ancestry; inclusions do not**
+//! (D4.1). `A << B` says *A has a B in it* and creates no is-a relationship, so
+//! a mixin's keys are not declarations of A's family and must not be validated
+//! against.
 //!
-//! # What is abstract
-//!
-//! `!type` is abstract, `!node` is concrete, and **an untagged node is
-//! abstract**. The corpus supplies the argument for the third: `fixtures/merge/*`
-//! and `fixtures/cycles/merge-diamond.yml` are built out of untagged anchored
-//! mappings that exist solely to be merged into something else. If untagged
-//! defaulted to concrete, every one of them would emit junk models and the
-//! ordinary act of factoring shared keys into a named mapping would pollute the
-//! graph.
-//!
-//! Inheritance across the boundary is **unrestricted** (D7.2): `!node` may
-//! extend `!node` and `!type` may extend `!node`. This is a prototypal model,
-//! not a class-based one, and the only structural restriction is D4.10's — the
-//! graph must be acyclic, whatever the tags on its nodes.
+//! `!type` is abstract, `!node` concrete, and an untagged node abstract (D7.1).
+//! Inheritance across the boundary is unrestricted (D7.2); the only structural
+//! restriction is D4.10's acyclicity, whatever the tags on the nodes.
 
 use std::collections::HashSet;
 
@@ -34,20 +22,12 @@ use super::view::Place;
 
 /// Whether a node is emitted as a model, and therefore validated.
 ///
-/// `!node` and `!edge` in Yamlfication source, and nothing else. `!type` is
-/// abstract, an untagged node is abstract (D7.1), and a tag in a base YAML file
-/// classifies as [`TagKind::Other`] because the vocabulary is not interpreted
-/// there (D6.6) — so a `.yaml` emits no models of its own by the default
-/// arriving at the right answer, rather than by a rule of its own.
+/// `!node` and `!edge` in Yamlfication source, and nothing else (D7.1, D4.13).
+/// A tag in a base YAML file classifies as [`TagKind::Other`] (D6.6), so a
+/// `.yaml` emits no models of its own by the default arriving at the right
+/// answer rather than by a rule of its own.
 ///
-/// **`!edge` is concrete** (D4.13). An edge is a node, and an edge that is
-/// never emitted relates nothing: there would be nothing in the output holding
-/// the relation together. Its abstract counterpart is `!type`, exactly as
-/// `!node`'s is, and an edge family is a `!type` that declares `connections` —
-/// which needs no new rule, because D7.3's tagged-empty spelling already means
-/// *a descendant must supply one*.
-///
-/// Published because pass 6 asks the same question and a second spelling of it
+/// Published because pass 6 asks the same question, and a second spelling of it
 /// would be a second rule.
 #[must_use]
 pub fn is_concrete(interned: &Interned, place: Place) -> bool {

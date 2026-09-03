@@ -3,55 +3,26 @@
 
 //! A resolved or declared view: an ordered, left-biased key table.
 //!
-//! Absorption is **left-biased** and **shallow** (D1.5). The first entry to
+//! Absorption is **left-biased** and **shallow** (D1.5): the first entry to
 //! claim a key keeps it, and a lower-precedence entry for the same key is
-//! discarded whole — never merged into it key by key. Every tier of D4.7 is
-//! therefore one call to [`View::absorb`] in precedence order, and precedence is
+//! discarded whole, never merged into it key by key. So every tier of D4.7 is
+//! one call to [`View::absorb`] in precedence order, and precedence is
 //! expressed by call order rather than by a rank stored per entry.
 //!
-//! # Access is a relation, not a flag
+//! **Access is a relation, not a flag.** Whether a member can be read depends
+//! on the relationship that brought it into the node holding it, and the three
+//! operators are three different relationships (D4.12). So a field records how
+//! it arrived ([`Acquisition`]) and what gates it ([`FieldGate`]), and reading
+//! is answered by [`Field::is_readable_from`] as a question about an observer
+//! *and* a field — never about a node.
 //!
-//! Visibility is **not one flag per node**. Whether a member can be read
-//! depends on the *relationship* that brought it into the node holding it, and
-//! the three operators are three different relationships:
+//! The epistemic gate is decided before any of this, where the reach is
+//! written: `E0241` for an import, `E0216` for a path ([`super::reach`]).
 //!
-//! * **Inclusion, `A << B`. A contains B.** B's private members come in and
-//!   stay B's: they are addressed through A but remain gated by B's context.
-//!   Containment neither republishes nor absorbs.
-//! * **Extension, `A extends: B`. A is an instance of B.** A takes B's *own*
-//!   members as **its own**, private ones included, re-gated onto A. This is
-//!   the one step across which privacy travels.
-//! * **Descent — A is a descendant of B, transitively.** A does not necessarily
-//!   hold B's members at all. It reaches them by going up, and only where it can
-//!   **read** them at that level. Privacy crosses **one** inheritance step and
-//!   then stops at the first scope boundary: a descendant sitting inside the
-//!   gating scope is not "outside", so nothing is republished by letting it
-//!   through.
-//!
-//! So a field records how it arrived ([`Acquisition`]) and what gates it
-//! ([`FieldGate`]), and reading is answered by
-//! [`Field::is_readable_from`] as a question about an observer *and* a field —
-//! never about a node.
-//!
-//! # The epistemic gate is checked before any of this
-//!
-//! If B is private and outside A's scope, A has no access to B **at all** — not
-//! its public surface, not its name. That is not decided here: it is decided
-//! where the reach is written, by `E0241` for an import and by `E0216` (pass 4,
-//! in front of path resolution) for a
-//! `!ref` ([`super::reach`]). A private B in A's *own* scope is entirely
-//! ordinary; privacy is a boundary against the outside, not secrecy from
-//! siblings.
-//!
-//! # What is deliberately left to pass 6
-//!
-//! **Being able to reference a node is not being able to reach into it.** A
-//! `!ref` to a public B yields B's public surface only, because B's private
-//! members are gated by B's scope and the referrer is outside it — which the
-//! predicate here already answers. What pass 6 owns is *applying* it while it
-//! walks: filtering members as it emits and as it traverses, so scoping never
-//! leaks through result shape. Pass 5 owes it the per-member data to do that
-//! with, and that is what this type is.
+//! What pass 6 owns is *applying* this predicate while it walks — filtering
+//! members as it emits and as it traverses, so scoping never leaks through
+//! result shape. Pass 5 owes it the per-member data to do that with, and that
+//! is what this type is.
 
 use std::collections::HashMap;
 

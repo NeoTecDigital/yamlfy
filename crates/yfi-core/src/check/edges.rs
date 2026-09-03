@@ -4,41 +4,27 @@
 //! `E0223`, `E0224` and `E0225` — reading what an `!edge` node relates (D4.13).
 //!
 //! An edge is a node, so this pass adds no construct: it reads two members off
-//! a node's **resolved** view and records what they name. Reading the resolved
-//! view rather than `own(A)` is the whole of the answer to *what does extending
-//! an edge mean* — nothing new. `connections` is one member, absorbed by the
-//! ordinary left-biased, shallow rule (D1.5), so a child either restates the
-//! sequence whole or inherits it whole. Extension never **appends** endpoints,
-//! and the operators are untouched.
+//! a node's **resolved** view and records what they name.
 //!
-//! # Why this runs in pass 5 and not pass 4
+//! It runs in pass 5 rather than pass 4 because `connections` may be inherited
+//! — pass 4 knows what each item names, but only pass 5 knows which
+//! `connections` a node ends up holding, and `E0223` against `own(A)` would
+//! fire on every concrete edge of a family declaring its endpoints in the base.
 //!
-//! Because `connections` may be inherited. Pass 4 has resolved every path and
-//! knows what each item names, but only pass 5 knows which `connections` a node
-//! ends up holding, and reporting `E0223` against `own(A)` would fire on every
-//! concrete edge of a family that declares its endpoints once in the base.
+//! **A position is what is written, not what survived.** An item that named
+//! nothing is `E0213` and holds no endpoint, and the items beside it do not
+//! renumber, so one bad item costs one diagnostic and moves no handle.
 //!
-//! # A position is what is written, not what survived
-//!
-//! An item that named nothing is `E0213` and holds no endpoint, and the items
-//! beside it **do not renumber**: `connections` writes three positions whether
-//! or not all three resolve. A handle is checked against the count the sequence
-//! writes and is matched to an endpoint by that written position, so one bad
-//! item costs exactly one diagnostic and moves no handle.
-//!
-//! # Where the second member lives
-//!
-//! `connections` is read here; `definition` and its `E0225` are read in the
-//! `handles` submodule, because the two members are read **independently** and the
-//! handle rules — a position has one spelling, an owned name may not be taken,
-//! the mapping is many-to-one — are a concern of their own that says nothing
-//! about endpoints.
+//! `definition` and its `E0225` are read in the `handles` submodule: the two
+//! members are read independently, and the handle rules are a concern of their
+//! own that says nothing about endpoints.
 
 mod handles;
+mod model;
 
 use std::collections::HashMap;
 
-use yfi_syntax::{Ast, Code, Diagnostic, Diagnostics, NodeId, ScalarStyle, Span};
+use yfi_syntax::{Ast, Code, Diagnostic, Diagnostics, NodeId, ScalarStyle};
 
 use crate::edge::{self, is_edge, CONNECTIONS, DEFINITION};
 use crate::link::{Ctx, Linked, RefRole};
@@ -47,108 +33,11 @@ use crate::tags::TagKind;
 
 use self::handles::handles;
 
+pub use self::model::{Connection, EdgeNode, Edges};
+
 use super::names::span_of;
 use super::resolve::Views;
 use super::view::{Field, Place};
-
-/// One endpoint of one edge, in written order.
-#[derive(Clone, Copy, Debug)]
-pub struct Connection {
-    /// Its position in `connections`, which is what a handle names and what
-    /// never renumbers: filtering an endpoint an observer cannot see removes it
-    /// from a result, and an endpoint that resolved to nothing leaves a gap,
-    /// and neither moves the ones beside it.
-    pub index: u32,
-    /// The item node that named it, in the file that wrote the sequence.
-    pub item: Place,
-    /// The node it names.
-    pub target: Place,
-    /// Whether the item was written `!ref` — the same declaration of intent it
-    /// is anywhere else (D4.3), checked as `E0217` and recorded here so the
-    /// image can answer *which endpoints does this edge intend to modify*.
-    pub capability: bool,
-    /// The handle `definition` gives this position, if it gives it one.
-    pub handle: Option<Symbol>,
-    /// Where the item is written.
-    pub span: Span,
-}
-
-/// One `!edge` node, and what it relates.
-#[derive(Debug)]
-pub struct EdgeNode {
-    /// The node carrying the tag.
-    pub place: Place,
-    /// Its endpoints, in written order. Possibly empty: an edge that writes
-    /// `connections: []` relates nothing *yet*, which is a shape and not a
-    /// mistake, while an edge with no `connections` member at all is `E0223`.
-    pub connections: Vec<Connection>,
-    /// Every handle `definition` declares, as a name and the position it names,
-    /// in written order.
-    ///
-    /// This is a list and not a field on [`Connection`] because the mapping is
-    /// **many-to-one**: two handles may name one position, and that is not a
-    /// degenerate case but the ordinary way a self-loop is written — `from: 0`
-    /// and `to: 0` over a single endpoint. Recording the handle on the position
-    /// it names lets only the last one survive, which silently loses `from`.
-    pub handles: Vec<(Symbol, u32)>,
-    /// Where the resolved view sites `connections`, whatever shape it turned
-    /// out to have, and `definition` likewise. Emission reads them to keep the
-    /// language's own members out of the **data** edges: a handle's value is a
-    /// position rather than a reference, and a `connections` of the wrong shape
-    /// has been reported once already and must not be reported again as a
-    /// member that names a node.
-    pub connections_value: Option<Place>,
-    /// Where the resolved view sites `definition`. See
-    /// [`EdgeNode::connections_value`].
-    pub definition_value: Option<Place>,
-}
-
-impl EdgeNode {
-    /// The endpoint a handle names, if it names one.
-    ///
-    /// Matched by **written position**, which is what the handle was checked
-    /// against. A handle naming a position whose item resolved to nothing binds
-    /// to no endpoint and answers `None`, and the endpoint after it keeps the
-    /// name it was given.
-    #[must_use]
-    pub fn connection(&self, handle: Symbol) -> Option<&Connection> {
-        let (_, index) = self.handles.iter().find(|(name, _)| *name == handle)?;
-        self.connections.iter().find(|held| held.index == *index)
-    }
-}
-
-/// Every `!edge` node of the project, indexed by the node carrying the tag.
-#[derive(Default)]
-pub struct Edges {
-    items: Vec<EdgeNode>,
-    index: HashMap<Place, usize>,
-}
-
-impl Edges {
-    /// Every edge node, in the order pass 5 resolved them.
-    #[must_use]
-    pub fn items(&self) -> &[EdgeNode] {
-        &self.items
-    }
-
-    /// The edge written at `place`, if one is.
-    #[must_use]
-    pub fn get(&self, place: Place) -> Option<&EdgeNode> {
-        self.index.get(&place).map(|at| &self.items[*at])
-    }
-
-    /// How many edge nodes the project writes.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.items.len()
-    }
-
-    /// Whether the project writes no edge at all.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-}
 
 /// Collect every `!edge` node's endpoints, reporting what is malformed.
 pub(crate) fn collect(
@@ -161,9 +50,7 @@ pub(crate) fn collect(
     let targets = resolved_items(linked);
     let mut edges = Edges::default();
     for place in order.iter().filter(|held| is_edge(ctx.interned, held.0, held.1)) {
-        let held = one(ctx, linked, views, &targets, *place, diagnostics);
-        edges.index.insert(*place, edges.items.len());
-        edges.items.push(held);
+        edges.push(one(ctx, linked, views, &targets, *place, diagnostics));
     }
     edges
 }

@@ -3,38 +3,14 @@
 
 //! The unified, stratified inheritance graph.
 //!
-//! All three operations are edges of **one** graph, and the cycle rule runs
-//! over the union (D4.10). Take `A << B` with `B extends: A`: neither mechanism
-//! contains a cycle by itself and two independent checks both pass, but
-//! resolution does not run on two graphs — `R(A)` needs `R(B)` needs `R(A)`,
-//! and the value oscillates. Separate rules would admit a construct whose
-//! meaning depends on the compiler's visit order.
+//! All three operations are edges of **one** graph and the cycle rule runs over
+//! the union (D4.10): separate rules would admit `A << B` with `B extends: A`,
+//! whose meaning depends on the compiler's visit order. Two vertices per node,
+//! `R(N)` and the sink `own(N)`, are what make SCC over the union exact.
 //!
-//! # Two vertices per node
-//!
-//! * `own(N)` — N's literal keys with clauses removed. **No outgoing edges.**
-//! * `R(N)` — N's resolved view.
-//!
-//! | from | to | source |
-//! |---|---|---|
-//! | `R(A)` | `R(B)` | `A << B` |
-//! | `R(A)` | `R(B)` | `A extends: B` |
-//! | `R(A)` | `R(B)` | `A extends: !ref B` — A is a type of B |
-//! | `R(B)` | `own(A)` | `A extends: !ref B` — **B depends on A** |
-//! | `R(B)` | `own(A)` | any other `!ref` in A — the same declaration, no keys |
-//!
-//! Because `own` vertices are sinks, a reverse edge can never lie on a cycle,
-//! so SCC over this graph accepts every legal extended reference and still
-//! finds every genuine cycle. That is not a convenience of the encoding: it is
-//! D4.5's `own(A)`-not-`R(A)` rule, which had to hold anyway, showing up as the
-//! property that makes the analysis decidable.
-//!
-//! # Why every edge records its kind
-//!
-//! In `A extends: !ref B` plus `B << A` the cycle closes through the two
-//! **forward** edges; the reverse edge cannot participate. `E0212` must name
-//! the forward edges and their kinds, or it blames the innocent half while the
-//! author is certain the `!ref` is at fault.
+//! Every edge records its **kind** because `E0212` must name the *forward*
+//! edges that closed a component; a reverse edge cannot participate, and
+//! blaming it would point at the innocent half.
 //!
 //! # Representation
 //!

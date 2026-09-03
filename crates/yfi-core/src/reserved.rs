@@ -3,21 +3,11 @@
 
 //! Reserved spellings the language holds back (D7.4).
 //!
-//! `!oneof` is reserved and is not implemented. Writing it is `E0222`.
-//!
-//! **A reservation with no diagnostic behind it is not a reservation.** Without
-//! this check the tag classifies as an unrecognised local tag on an ordinary
-//! value and is carried silently, so a document that asks for an enumeration
-//! gets a model that has none and no word about it — the silently-wrong-model
-//! failure D2.1 names as the worst this system has, reached here by writing the
-//! one spelling the language explicitly told you it owns.
-//!
-//! The check belongs to discovery rather than to a later pass because it needs
-//! exactly two things discovery already holds: the tag, and the **class** of the
-//! file that wrote it. In base YAML the operators and tags are not interpreted
-//! (D6.6), so `!oneof` there is an ordinary unrecognised tag and stays silent —
-//! reserving a name inside files the language does not own would be the engine
-//! rejecting other people's data for using a word.
+//! `!oneof` is reserved and unimplemented; writing it is `E0222`. The check
+//! belongs to discovery because it needs exactly two things discovery already
+//! holds — the tag, and the **class** of the file that wrote it. In base YAML
+//! the tag vocabulary is not interpreted (D6.6), so `!oneof` there stays
+//! silent.
 
 use tracing::debug;
 use yfi_syntax::{Code, Diagnostic, Diagnostics, NodeId};

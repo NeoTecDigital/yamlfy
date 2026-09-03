@@ -3,47 +3,19 @@
 
 //! What `!edge` is, in one place (D4.13).
 //!
-//! **An edge is a node.** It has identity, it is addressable by the path
-//! syntax, it is extended by the same three operators, and it is validated by
-//! the same checks. There is one set of rules and this module adds no second
-//! construct — it names the two members the language owns on such a node and
-//! nothing else:
+//! **An edge is a node** — same identity, same path syntax, same three
+//! operators, same checks. This module names the two members the language owns
+//! on such a node, `connections` and `definition`, and adds no second
+//! construct. Both are read from the node's **resolved** view rather than from
+//! its own keys, which is not a rule about edges but what extension already
+//! means.
 //!
-//! * **`connections`** — a sequence of the nodes the edge relates. It is what
-//!   makes the node an edge, so an `!edge` that holds none is `E0223`. The
-//!   sequence is **n-ary**: a three-way edge is one edge, never three binary
-//!   ones, and nothing anywhere assumes two endpoints.
-//! * **`definition`** — optional, a mapping of **handles**: a name for a
-//!   position in `connections`, so an endpoint can be addressed as `source`
-//!   rather than as `0`. A handle that names no position is `E0225`.
-//!
-//! Both are read from the node's **resolved** view, not from its own keys, so
-//! an edge that inherits its connections from a base has them. That is not a
-//! rule about edges; it is what extension already means.
-//!
-//! # Everything else on an edge is an ordinary member
-//!
-//! "Nothing but `connections[]`" says what makes a node an edge, not what a
-//! node may hold. An edge sitting between two nodes and carrying its own
-//! members is **middleware**, and it is reachable here precisely because
-//! nothing precludes it: the members are members, the validation is D7.3's, and
-//! no feature had to be added to allow it.
-//!
-//! # The two names are the language's, not the family's
-//!
-//! `connections` and `definition` on an `!edge` are written by the language,
-//! so they are exempt from `W0301`. Without the exemption an edge extending any
-//! abstract family that does not itself declare them would be warned about for
-//! writing the two members the tag requires it to write.
-//!
-//! # `connections` is not a reserved word
-//!
-//! It is a reach position on the nodes an `!edge` **reads it from**, and an
-//! ordinary member name everywhere else. Which those nodes are is not a
-//! property of the holder's tag — see [`endpoint_holders`]. What pass 4 is
-//! finally handed is one step past that: the **sequences** those members name,
-//! because the value may be an alias and the items are written wherever the
-//! alias points — see [`endpoint_sequences`].
+//! `connections` is not a reserved word. It is a reach position on the nodes an
+//! `!edge` **reads it from**, and which those are is not a property of the
+//! holder's tag — see [`endpoint_holders`]. What pass 4 is finally handed is
+//! one step past that: the **sequences** those members name, because the value
+//! may be an alias and the items are written wherever the alias points — see
+//! [`endpoint_sequences`].
 
 use std::collections::{HashMap, HashSet};
 
@@ -80,13 +52,9 @@ pub fn is_edge(interned: &Interned, file: FileId, node: NodeId) -> bool {
 
 /// Every sequence whose items an `!edge` reads as its endpoints.
 ///
-/// This, and not [`endpoint_holders`], is what pass 4 asks. The reach position
-/// is the **sequence**, not the key: an alias standing as the member's value is
-/// dereferenced exactly as one standing as an item is (D4.13), so the items an
-/// edge relates may be written in a file that holds no edge and names no
-/// `connections` at all. Answering with the holder would leave those items read
-/// as data, which is the silent-wrong-graph failure this whole question exists
-/// to avoid.
+/// This, and not [`endpoint_holders`], is what pass 4 asks: the reach position
+/// is the **sequence**, not the key, so the items an edge relates may be
+/// written in a file that holds no edge and names no `connections` at all.
 ///
 /// A holder in a **base YAML** file contributes nothing: nothing there is a
 /// reach (D6.6), and an edge that ends up with such a member is `E0223`.
@@ -151,30 +119,9 @@ pub(crate) fn dereference(ctx: &Ctx, at: Place) -> Place {
 
 /// Every node some `!edge` reads a `connections` member **from**.
 ///
-/// # Why this is not a question about the holder's tag
-///
-/// A `connections` item is a reach, so pass 4 has to decide — while it is
-/// looking at the item — whether the scalar beside it names a node or is a
-/// string. Asking the holder's tag cannot answer that, in either direction:
-///
-/// * an edge inherits `connections` from an **untagged mixin** or a `!node`
-///   base, which is D7.1's ordinary form and carries no tag saying so. Reading
-///   those items as data leaves every one of them resolved to nothing, and the
-///   edge relates nobody with no diagnostic to say why;
-/// * widening the test to `!type` makes `connections` a **reserved word on
-///   every `!type` in the language**, with no escape — quoting does not help,
-///   because there is no prefix in that position for a quote to escape. A
-///   router type listing `["eth0", "eth1"]` is then two unresolved paths.
-///
-/// Reach-ness belongs to the **consumer**: a `connections` member is an edge's
-/// endpoints exactly when an `!edge` ends up holding it. That is a question
-/// about the inheritance relation, so it is answered from the relation — every
-/// node reachable from an `!edge` by walking the contribution edges of D4.7
-/// backwards, which is what "this key can arrive in an edge's resolved view"
-/// means. A node no `!edge` inherits from keeps `connections` as an ordinary
-/// member name, and nothing about it is reserved.
-///
-/// Both directions of the tier-5 edge are followed: `X extends: !ref A`
+/// Reach-ness belongs to the **consumer**, not to the holder's tag (D4.13), so
+/// this is the reverse closure of D4.7's contribution edges beginning at every
+/// `!edge`. Tier 5 is followed in both directions: `X extends: !ref A`
 /// contributes `own(X)` **to** A, so an edge A reads X's keys as well as its
 /// own bases'.
 #[must_use]

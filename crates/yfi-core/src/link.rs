@@ -1,55 +1,21 @@
 // Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Pass 4 — linking.
+//! Pass 4 — linking: the pass that makes an interned but still separate set of
+//! files one graph (§9, pass 4).
 //!
-//! Pass 3 leaves every file interned and indexed but still alone. Linking is
-//! the pass that makes the project one graph:
+//! The definition table, every path resolved with its operator role and its
+//! `!ref` flag (D4.3), every clause validated for operand shape (D1.6), every
+//! `!ref` binding that shadows a definition of its own file (`E0219`, D4.12),
+//! the stratified inheritance graph pass 5 runs SCC over (D4.10), and every
+//! extended-reference contribution (D4.5, D4.11).
 //!
-//! * the **definition table** — every addressable node, indexed by the file and
-//!   by the directory that holds it (which is what a path walks, D4.12) and by
-//!   its canonical `namespace/name` (which is what `E0230` compares);
-//! * every **path resolved**, recorded with the *role* the operator it is an
-//!   operand of gives it and with whether it carried `!ref` (D4.3);
-//! * every **inheritance clause** validated for operand shape (D1.6, `E0211`);
-//! * every `!ref` **binding** that shadows a definition of its own file
-//!   (`E0219`), because a bare path is file-local and a binding that captures
-//!   one retargets lines nobody edited;
-//! * the **stratified inheritance graph** pass 5 runs SCC over;
-//! * every **extended-reference contribution**, with `E0214` and `W0303`.
-//!
-//! Nothing is *resolved* here. No view is flattened, no cycle is detected, no
-//! ancestry is walked. Pass 4 answers "what points at what, and is that legal
-//! to write"; pass 5 answers "what does it mean".
-//!
-//! # Addressability
-//!
-//! An anchored node that **can be a parent scope — a collection — is
-//! addressable**: it is a member of its file and referenceable as a type. An
-//! anchored *scalar* is a value, not a type, and carries no canonical path, so
-//! two files may both write `&limit 30` without colliding.
-//!
-//! The canonical path is `namespace/name` and is therefore namespace-qualified,
-//! which is what makes an ordinary local `&defaults` mixin safe: two files in
-//! two namespaces defining one name are two paths, not a collision. **Reach
-//! does not go through it** — a path addresses a file or a directory (D4.12),
-//! so a file whose directory claims no namespace is still reachable while
-//! carrying no canonical path at all.
-//!
-//! A base YAML file declares nothing (D6.6), so its anchors are unaddressable
-//! and its `extends:` is an ordinary field. Its `<<` edges *are* in the graph,
-//! because merge is YAML's and is governed in both classes.
-//!
-//! # Why the graph is stratified
-//!
-//! Every node gets two vertices, `own(N)` and `R(N)`. Inclusion and extension
-//! contribute `R(A) → R(B)`. An extended reference contributes `R(A) → R(B)`
-//! *and* `R(B) → own(A)`, because B depends on A. `own(A)` is a **sink**, so a
-//! reverse edge can never lie on a cycle and SCC over this graph is exact.
-//!
-//! Built the obvious way — one vertex per node — every extended reference is a
-//! two-cycle and pass 5 hallucinates a cycle on every use of the feature, which
-//! is worse than missing cycles because it looks like a working checker.
+//! **Nothing is resolved here.** No view is flattened, no cycle is detected, no
+//! ancestry is walked. Addressability (§4), the canonical `namespace/name`, and
+//! why `own` vertices are sinks are all decided elsewhere; what this pass adds
+//! is that a base YAML file's `<<` edges *are* in the graph even though its
+//! anchors are unaddressable, because merge is YAML's and is governed in both
+//! classes (D6.6).
 //!
 //! # Example
 //!
@@ -65,6 +31,7 @@
 mod clause;
 mod contrib;
 pub(crate) mod graph;
+mod kernel;
 pub(crate) mod keys;
 pub(crate) mod path;
 mod refs;
@@ -75,80 +42,19 @@ mod value;
 use std::collections::HashSet;
 
 use tracing::debug;
-use yfi_syntax::{Ast, Diagnostics, FileId, NodeId, SeverityMap};
+use yfi_syntax::{Diagnostics, FileId, NodeId, SeverityMap};
 
-use crate::discover::{FileClass, Project};
+use crate::discover::Project;
 use crate::intern::Interned;
 
 pub use clause::{Clause, ClauseKind, Operand, OperandForm};
 pub use contrib::{ContributedKey, Contribution};
 pub use graph::{Direction, Edge, EdgeId, EdgeKind, Graph, Stratum, Vertex, VertexId};
+pub(crate) use kernel::Ctx;
+pub use kernel::{source_order, SourceOrder};
 pub use path::Path;
 pub use refs::{RefRole, Reference};
 pub use table::Definition;
-
-/// What every pass-4 step reads. Two borrows, carried together so no step has
-/// to be handed a different subset of the project than its neighbour.
-pub(crate) struct Ctx<'a> {
-    pub(crate) project: &'a Project,
-    pub(crate) interned: &'a Interned,
-}
-
-impl<'a> Ctx<'a> {
-    /// One file's arena.
-    pub(crate) fn ast(&self, file: FileId) -> Option<&'a Ast> {
-        self.project.file(file).map(|f| &f.ast)
-    }
-
-    /// Whether `file` is read as Yamlfication source. In base YAML the
-    /// operators are not interpreted (D6.6), so almost every rule here asks.
-    pub(crate) fn is_source(&self, file: FileId) -> bool {
-        self.interned.class_of(file) == Some(FileClass::Source)
-    }
-
-    /// The namespace the file's directory scope claims, if it claims one.
-    pub(crate) fn namespace_of(&self, file: FileId) -> Option<&'a str> {
-        let scope = self.project.file(file)?.scope;
-        self.project.scopes().get(scope)?.namespace.as_deref()
-    }
-}
-
-/// A position in the project ordered by where it is **written**.
-///
-/// [`NodeOrder`] is the project's total order and its node component is the
-/// arena index, which is *post-order*: the lowest-indexed member of a set is
-/// its deepest-leftmost leaf, not the one written first. Every user-visible
-/// choice — which member of a cycle `E0212` points at, which of two
-/// contributions is "the first" — must be the textually first one, so it is
-/// ordered by this instead. Provided here rather than left to pass 5, which
-/// would otherwise have to guess.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct SourceOrder {
-    /// Rank of the file in relative-path order.
-    pub file: u32,
-    /// Zero-based document index within that file.
-    pub document: u32,
-    /// Byte offset of the node's first character.
-    pub byte: u32,
-}
-
-/// Where `node` is written, as `(file rank, document index, source position)`.
-#[must_use]
-pub fn source_order(
-    project: &Project,
-    interned: &Interned,
-    file: FileId,
-    node: NodeId,
-) -> Option<SourceOrder> {
-    let rank = project.rank(file)?;
-    let ast = &project.file(file)?.ast;
-    let span = ast.nodes().get(node.index())?.span;
-    Some(SourceOrder {
-        file: rank,
-        document: interned.document_of(file, node).unwrap_or(u32::MAX),
-        byte: span.start.byte,
-    })
-}
 
 /// Everything pass 4 built, and everything it found.
 pub struct Linked {
@@ -158,6 +64,7 @@ pub struct Linked {
     clauses: Vec<Clause>,
     graph: Graph,
     contributions: Vec<Contribution>,
+    space: path::Space,
 }
 
 impl Linked {
@@ -165,11 +72,6 @@ impl Linked {
     #[must_use]
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
-    }
-
-    /// Take the diagnostics so the caller can fold them into the project's.
-    pub fn take_diagnostics(&mut self) -> Diagnostics {
-        std::mem::take(&mut self.diagnostics)
     }
 
     /// Every addressable node, in discovery order.
@@ -188,6 +90,13 @@ impl Linked {
     #[must_use]
     pub fn path_of(&self, file: FileId, node: NodeId) -> Option<&str> {
         self.table.path_of(file, node)
+    }
+
+    /// The shape of the project a path walks. Built once per link, because it
+    /// is a pure function of the project and every later pass that resolves a
+    /// path asks it the same two questions.
+    pub(crate) fn space(&self) -> &path::Space {
+        &self.space
     }
 
     /// The definition table, for the one other pass that walks a path.
@@ -263,27 +172,21 @@ pub fn link_with(project: &Project, interned: &Interned, severities: SeverityMap
         contributions = contributions.len(),
         "linked project"
     );
-    Linked { diagnostics, table, references, clauses, graph, contributions }
+    Linked { diagnostics, table, references, clauses, graph, contributions, space }
 }
 
 /// The sequences whose items some `!edge` ends up reading as endpoints (D4.13).
 ///
-/// A `connections` item is a reach, so [`refs`] has to know — while it is
-/// looking at the item — whether the scalar beside it names a node. That is not
-/// answerable from the holder's tag: an edge inherits the member from bases
-/// that carry no tag saying so, and making every `!type`'s `connections` a
-/// reach would reserve the name across the language. It is answerable from the
-/// **inheritance relation**, which is what [`crate::edge::endpoint_holders`]
-/// reads, followed one step to the sequence the member names — an alias
-/// standing as that value is dereferenced, so the items may be written in a
-/// file that holds no edge at all.
+/// Not answerable from the holder's tag — an edge inherits the member from
+/// bases carrying no tag that says so, and making every `!type`'s `connections`
+/// a reach would reserve the name across the language — so it is read off the
+/// **inheritance relation** by [`crate::edge::endpoint_holders`], followed one
+/// step to the sequence the member names, dereferencing an alias standing as
+/// that value. The items may therefore sit in a file holding no edge at all.
 ///
-/// The relation is built from clauses, and a clause operand may itself be a
-/// path, so the reference pass runs once as a silent [`refs::probe`] to give
-/// the clause collection something to read. No operand's meaning depends on the
-/// answer — the set decides one position and no operand is in it — so the
-/// probe's clauses are the clauses, and only the diagnostics are withheld,
-/// because the real run raises them.
+/// The relation is built from clauses whose operands may themselves be paths,
+/// which is why [`refs::probe`] runs first; [`refs`] documents why the two runs
+/// agree.
 fn endpoint_sequences(
     ctx: &Ctx,
     table: &table::Table,

@@ -3,14 +3,10 @@
 
 //! When a cross-file binding is computed, and what it is computed against.
 //!
-//! Two questions `projects/` answers that the import *edges* do not. First, a
-//! file in an import cycle cannot be parsed past its first cross-file alias
-//! until the other side is bound, and the other side is in the same position —
-//! so the binding pass iterates, and it has to start from something no parse
-//! can give it (D6.7). Second, an import is re-installed at every document
-//! start and a local definition of the same name dies with its own document
-//! (D2.6), so which of the two an alias means is a question about *where* the
-//! alias is written.
+//! Two questions `projects/` answers that the import *edges* do not: that the
+//! binding pass iterates over a cycle from a seed no parse can give it (D6.7),
+//! and that which of an import and a local definition an alias means is a
+//! question about *where* the alias is written (D2.6).
 
 mod common;
 

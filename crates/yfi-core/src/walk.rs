@@ -139,9 +139,15 @@ fn classify(
     found.push(Candidate { relative, identity: identity(path), path: path.to_path_buf(), class });
 }
 
-/// The real identity of a path, exposed so the caller can resolve an import
-/// onto the file it names without canonicalizing twice.
-pub(crate) fn identity(path: &Path) -> PathBuf {
+/// What makes two paths the same file: the canonicalized path, or the path
+/// itself when it names nothing on disk.
+///
+/// The one answer in the project. Discovery matches an import against a
+/// discovered file with it, and the CLI matches a path the caller typed
+/// against the same set, so a `./`-prefixed or symlinked spelling has to
+/// resolve identically in both or the two disagree about what was asked for.
+#[must_use]
+pub fn identity(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 

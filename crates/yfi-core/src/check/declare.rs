@@ -3,35 +3,18 @@
 
 //! D7.3's three-state declaration rule, and what a tag comparison means.
 //!
-//! | written | state | meaning |
-//! |---|---|---|
-//! | `port: !!int` | tagged, empty | **required** — a descendant must supply a value |
-//! | `port: !!int 3` | tagged, with value | **optional**, defaulting to `3` |
-//! | `region:` | untagged, empty | **declared, unconstrained** |
-//!
-//! The empty/valued distinction has to carry "must be supplied" because every
-//! other spelling fails: `port:` alone is null, and null is a legitimate
-//! *inherited* value, so "unsupplied" and "supplied as nothing" would be the
-//! same text.
-//!
-//! # Comparing two tags
-//!
-//! By `(is core schema, suffix)`, never by handle. A `%TAG` directive rewrites
-//! the handle and leaves the suffix alone, so comparing handles would make a
-//! declaration silently stop matching in any file carrying a directive; and
-//! `!node` must not compare equal to the core schema's `tag:yaml.org,2002:node`,
-//! which is a different tag.
-//!
-//! # What is deliberately not compared
+//! Tags are compared by `(is core schema, suffix)`, never by handle: a `%TAG`
+//! directive rewrites the handle and leaves the suffix alone, so comparing
+//! handles would make a declaration silently stop matching in any file carrying
+//! a directive — and `!node` must not compare equal to the core schema's
+//! `tag:yaml.org,2002:node`, which is a different tag.
 //!
 //! An **untagged scalar** is not resolved against the core schema and is
-//! therefore never `E0221`. YAML's own resolution would call plain `8443` an
-//! `!!int` and plain `hello` an `!!str`, which reads well until a field
-//! declared `!!str` is given plain `8443` — legal YAML, and a diagnostic there
-//! would be this compiler inventing a rule D7.3 does not state. What *is*
-//! compared without a tag is the **kind**: a mapping or a sequence supplied
-//! where a core scalar tag is declared is a mismatch no schema resolution can
-//! explain away.
+//! therefore never `E0221`: YAML's own resolution would call plain `8443` an
+//! `!!int`, and a diagnostic there would be this compiler inventing a rule D7.3
+//! does not state. What *is* compared without a tag is the **kind** — a mapping
+//! or a sequence supplied where a core scalar tag is declared is a mismatch no
+//! schema resolution can explain away.
 
 use yfi_syntax::{Ast, NodeId, Tag};
 

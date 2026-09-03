@@ -10,20 +10,15 @@
 //! the project addresses it, preferring the canonical path over the local
 //! anchor, and every cross-file edge names the file it lands in.
 
-use yfi_syntax::{FileId, Pos, Span};
+use yfi_syntax::{FileId, Span};
 
 use crate::link::{Ctx, Linked};
 
 use super::view::Place;
 
-/// A node's span. The fallback cannot be reached — every place named here came
-/// from an arena this pass walked — and is an empty span in the right file
-/// rather than a panic, because a diagnostic that cannot be placed must still
-/// be reported.
+/// [`Ctx::span_of`] addressed by [`Place`], which is how pass 5 carries a node.
 pub(crate) fn span_of(ctx: &Ctx, place: Place) -> Span {
-    ctx.ast(place.0)
-        .and_then(|ast| ast.nodes().get(place.1.index()).map(|held| held.span))
-        .unwrap_or_else(|| Span::empty(place.0, Pos::default()))
+    ctx.span_of(place.0, place.1)
 }
 
 /// How a node is named in a diagnostic: its canonical path when it has one, its

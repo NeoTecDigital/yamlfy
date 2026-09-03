@@ -3,43 +3,17 @@
 
 //! The canonical-path table, and `E0230`'s duplicate-definition condition.
 //!
-//! # What is addressable
+//! Addressability (§4) and what this condition compares — **one directory, one
+//! name, two files** — are decided in the spec. Two facts about this code:
+//! repetition *within* one file is a state sequence and is folded to its last
+//! state (D5.1, D5.2) before anything is compared across files; and the
+//! comparison is made on the **directory** rather than on the namespace,
+//! because a header is optional and the collision is not.
 //!
-//! An anchored node that can be a parent scope — a **collection** — is a member
-//! of its file and referenceable as a type. An anchored **scalar** is a value,
-//! not a type, and carries no canonical path at all. That distinction is what
-//! stops `E0230` from firing against two files that each write `&limit 30`,
-//! which are two values and not two definitions of one thing.
-//!
-//! Only a Yamlfication source file contributes. A base YAML file declares
-//! nothing (D6.6) and holds no addressable definition at all. A `.yfy` whose
-//! directory claims no namespace does contribute — it is addressable by
-//! directory and by file — it simply carries no canonical path.
-//!
-//! # What `E0230` compares here
-//!
-//! **One directory, one name, two files.** Several files contributing to one
-//! directory is the ordinary arrangement and must stay silent, and a name
-//! repeated *within* one file is a state sequence with a defined last state
-//! (D5.1, D5.2) — so repetition is folded to the last state per file first, and
-//! only then compared across files. Across two files there is no authored order
-//! at all: the winner would be decided by D6.2's path ranking, which is to say
-//! by a filename, and a graph whose values depend on a filename is what D1.8
-//! refuses.
-//!
-//! The comparison is made on the **directory**, not on the namespace, because a
-//! header is optional and the collision is not. Two headerless files of one
-//! directory both defining `&Widget` are reached by one `./Widget` (D4.12) and
-//! only their filenames rank them, which is the identical fault; making the
-//! check conditional on a declared namespace would let renaming a file change
-//! the graph while changing no text. A namespace is claimed by one directory
-//! and one only — `discover` already reports two directories claiming one
-//! namespace — so for a file that *does* declare one the two conditions
-//! coincide and exactly one `E0230` is raised either way.
-//!
-//! This is the third condition behind `E0230`. The two `discover` already
-//! raises — headers in one directory disagreeing about an axis, and one
-//! namespace claimed by two directories — are declaration conflicts and stay.
+//! Only a Yamlfication source file contributes; a base YAML file holds no
+//! addressable definition at all (D6.6). A `.yfy` whose directory claims no
+//! namespace does contribute — it is addressable by directory and by file — it
+//! simply carries no canonical path.
 
 use std::collections::HashMap;
 
@@ -74,14 +48,11 @@ impl Definition {
 
 /// Every addressable node of the project, indexed four ways.
 ///
-/// `by_path` is the **canonical** index, `namespace/name`, and it exists only
-/// for a directory that claims a namespace. The other two are what a *path*
-/// walks (D4.12): a path addresses a file or a directory, not a namespace, so a
-/// `.yfy` in a directory whose headers claim no namespace is still reachable as
-/// `sibling/Name` while carrying no canonical path at all. Addressability and
-/// canonical identity are two questions and this is where they part — which is
-/// why `by_scope`, the addressability index, is the one `E0230`'s
-/// duplicate-definition condition compares.
+/// `by_path` is the **canonical** index, `namespace/name`, and exists only for
+/// a directory that claims a namespace; the others are what a *path* walks
+/// (D4.12). Addressability and canonical identity are two questions (D6.1) and
+/// this is where they part — which is why `by_scope`, the addressability index,
+/// is the one `E0230`'s duplicate-definition condition compares.
 pub(crate) struct Table {
     definitions: Vec<Definition>,
     by_path: HashMap<Box<str>, usize>,

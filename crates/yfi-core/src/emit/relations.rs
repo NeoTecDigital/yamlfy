@@ -47,13 +47,6 @@ pub(super) struct RawEdge {
 }
 
 /// Every relationship the project writes, in the order it is written.
-///
-/// Read from the **clauses and references**, which are what an author wrote,
-/// rather than from pass 4's stratified graph, which is the encoding SCC needs.
-/// That encoding gives an extended reference two vertices and two edges so that
-/// a reverse dependency can never lie on a cycle; here the two directions are
-/// the two indexes, so decoding it back would only be a way of losing the
-/// operand's written form on the way through.
 pub(super) fn raw_edges(ctx: &Ctx, linked: &Linked, checked: &Checked) -> Vec<RawEdge> {
     let mut out = Vec::new();
     let owned = owned_values(ctx, checked);

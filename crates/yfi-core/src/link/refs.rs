@@ -3,66 +3,18 @@
 
 //! Path references: where one is written, what it names, and what `!ref` adds.
 //!
-//! **The path is the reach** (D4.12). A path resolves against the project's
-//! directories and files, it needs no `imports:` entry to precede it, and
-//! writing it is what performs the reach. Visibility still decides whether the
-//! reach is *permitted* — that is `check`'s `E0216` — but nothing has to be
-//! declared twice for a path to mean something.
+//! **The path is the reach** (D4.12): a path resolves against the project's
+//! directories and files and needs no `imports:` entry to precede it. The three
+//! positions a plain scalar is read as a path in, what each form resolves
+//! against, and what `!ref` declares on top of a plain path are all D4.12's;
+//! the `connections` row is D4.13's. Whether the reach is *permitted* is
+//! `E0216`, and `check::reach` says why that one gate sits elsewhere.
 //!
-//! # Where a plain scalar is read as a path
-//!
-//! | position | read as a path when |
-//! |---|---|
-//! | operand of `<<:` or `extends:` | it parses as a path at all |
-//! | item of a `connections` an `!edge` reads | always: it is a reach or it is `E0213` |
-//! | anywhere else (a data edge) | it parses **and** was written `./…` or `../…` |
-//!
-//! The asymmetry is exact rather than a matter of taste. A scalar under `<<:`
-//! or `extends:` was `E0211` in every previous version of the language, so
-//! reading it as a path cannot change the meaning of anything that used to be
-//! legal. A scalar in a data position has always been data, so there the reach
-//! must be *anchored* — a leading `./` or `../` — and `region: eu-west` stays a
-//! string no matter what the project happens to contain.
-//!
-//! # What `!ref` adds
-//!
-//! `!ref` is not the way to write a reference; a plain path is. `!ref` is a
-//! **declaration of intent**, and it is legal wherever a path is:
-//!
-//! * **mutation** — the target must be writable from here, which `check`
-//!   enforces as `E0217`. An extended reference is a write performed at compile
-//!   time, so the mutability axis is a real gate rather than a record;
-//! * **dependency** — the target depends on this context, the same direction
-//!   `extends: !ref` establishes, and therefore the same reverse edge into
-//!   `own(A)` the graph already builds;
-//! * **access** — written at a mapping entry it binds that key as a name
-//!   carrying the capability, so `service.member_one` addresses into it. Access
-//!   is granted to *that member*, not to the file, which is D4.12's rule that
-//!   access is a relationship rather than a flag.
-//!
-//! A plain path binds nothing. `service: ../core/Service` is a data edge and
-//! `service.member_one` elsewhere in the document will not find it: only a
-//! `!ref` establishes the capability that member access addresses through.
-//!
-//! A `connections` item is the third row because the position is declared by
-//! the language, which is as explicit a signal as `extends:` is and nothing
-//! like the incidental one D6.6 refuses. There is no prefix in that position,
-//! so quoting escapes nothing there and a quoted endpoint still names a node.
-//!
-//! # Which `connections` that is, and why the pass runs twice
-//!
-//! The third row is not "a member called `connections`", which would reserve
-//! the name on every node in the language, and not "a member of an `!edge`"
-//! either, because an edge inherits the member from bases carrying no tag that
-//! says so. It is the set [`crate::edge::endpoint_sequences`] names: the
-//! **sequences** an edge ends up reading, derived from the inheritance clauses
-//! and followed one step through an alias, so an item is an endpoint exactly
-//! when the sequence it sits in is one an edge reads — wherever that sequence
-//! is written. A clause operand may itself be a path this pass resolves, so the
-//! pass runs twice. [`probe`] resolves everything with no
-//! `connections` item read as a reach and reports nothing; `link` builds the
-//! clauses from it and calls [`resolve`] with the answer. No operand's meaning
-//! depends on the set, so only the third row moves between the two runs.
+//! That third position is the set [`crate::edge::endpoint_sequences`] names,
+//! and a clause operand may itself be a path this pass resolves, so **the pass
+//! runs twice** (D4.13): [`probe`] resolves with no `connections` item read as
+//! a reach and reports nothing, `link` builds the clauses from it, then calls
+//! [`resolve`] with the answer. Only the third position moves between the runs.
 //!
 //! In a base YAML file `!ref` is an unrecognised tag on a value and nothing
 //! else (D6.6), so pass 3 classifies it as [`TagKind::Other`] there and this
@@ -369,13 +321,10 @@ struct Site {
 /// form, so one level of sequence is stepped through before the entry is found.
 /// A mapping **key** is never a path: it names a field.
 ///
-/// `endpoints` is the set of **sequences** an `!edge` reads (D4.13), not the
-/// set of nodes holding the key, so an item is an endpoint exactly when the
-/// sequence it sits in is one an edge reads — whether the edge wrote the
-/// sequence, inherited it, or reached it through an alias. Only the sequence
-/// form is a reach position: a `connections` that is not one never enters the
-/// set, and is reported once as `E0224` rather than twice as a shape fault and
-/// a failed path.
+/// `endpoints` is the set of **sequences** an `!edge` reads, not of the nodes
+/// holding the key, so only the sequence form is a reach position: a
+/// `connections` that is not one never enters the set, and is reported once as
+/// `E0224` rather than twice as a shape fault and a failed path.
 fn site(
     ctx: &Ctx,
     endpoints: &HashSet<(FileId, NodeId)>,
@@ -403,14 +352,11 @@ fn site(
     // every reader of it*, so this is decided before anything about the
     // sequence's own surroundings is consulted.
     //
-    // It used to be decided last, behind four exits: a sequence nested in
-    // another sequence, a sequence standing as a complex mapping key, and a
-    // sequence written as a `<<` or `extends` operand list all reached their
-    // own answer first. Each left the edge relating **nothing**, with no
-    // diagnostic — and the items, if anchored, reappeared as data edges leaving
-    // the anonymous list. That is a silently wrong graph in the one feature
-    // D4.13 exists to describe, reached by aliasing a shared sequence, which is
-    // the ordinary way to write one.
+    // It used to be decided last, behind four exits — a sequence nested in
+    // another, one standing as a complex mapping key, and one written as a `<<`
+    // or `extends` operand list each reached its own answer first. All four
+    // left the edge relating **nothing**, with no diagnostic, on the ordinary
+    // shape of an aliased shared sequence.
     if !direct && endpoint {
         return Some(connection(ctx.interned.parent_of(file, parent)));
     }

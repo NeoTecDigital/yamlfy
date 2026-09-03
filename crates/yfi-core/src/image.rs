@@ -3,49 +3,31 @@
 
 //! The compiled image: what pass 6 produces and what the runtime queries.
 //!
-//! The image is a **side table**, exactly as every pass before it is. It
-//! borrows the project, the interned indexes and the resolved views rather than
-//! copying them, and adds only what those cannot answer in the time a traversal
-//! needs:
+//! A **side table**, exactly as every pass before it is. It borrows the
+//! project, the interned indexes and the resolved views rather than copying
+//! them, and adds only what those cannot answer in the time a traversal needs:
+//! a model per resolved node marked abstract or concrete; its ancestor chain,
+//! because flattening destroys the `is_a` axis; a **CSR edge index, forward and
+//! reverse**, so inbound traversal is O(degree) rather than O(V+E); its scope
+//! path; and a name index keyed by the path syntax of D4.12.
 //!
-//! * a **model per node** the project resolved, marked abstract or concrete;
-//! * its **ancestor chain**, because flattening destroys the `is_a` axis and
-//!   retaining ancestry is the entire reason `extends` is distinct from `<<`;
-//! * a **CSR edge index, forward and reverse**, so inbound traversal is
-//!   O(degree) rather than O(V+E);
-//! * its **scope path**, so access is answered without re-walking the tree;
-//! * a **name index** keyed by the path syntax of D4.12.
-//!
-//! # What is a model, and what is merely held
-//!
-//! `!node` is concrete and is emitted. `!type` is abstract and is **never**
-//! emitted. An **untagged node is abstract** (D7.1): `fixtures/merge/*` and
-//! `fixtures/cycles/merge-diamond.yml` are built out of untagged anchored
-//! mappings that exist to be merged into something else, and emitting them
-//! would make the ordinary act of factoring shared keys pollute the graph.
-//!
-//! [`Image::models`] is therefore the compiled output and yields concrete
-//! models alone. [`Image::nodes`] yields everything the image holds, abstract
-//! included, because an ancestor chain whose links were dropped is not a chain:
+//! `!node` and `!edge` are concrete and are emitted; `!type` and untagged are
+//! abstract and are not (D7.1, D4.13). [`Image::models`] is the compiled output and
+//! yields concrete models alone, while [`Image::nodes`] yields everything the
+//! image holds — an ancestor chain whose links were dropped is not a chain, so
 //! an abstract base is retained as a *vertex of the `is_a` axis*, which is not
 //! the same act as emitting it as a model.
 //!
-//! # Access is applied here, never decided here
+//! Pass 5 computed each member's gate and wrote the two predicates. This module
+//! **applies** them and does not restate them:
+//! [`ModelView::fields_readable_from`] filters as it walks, so an unreadable
+//! member is absent from the result by *shape* rather than present as a hole, a
+//! null or a count. Two implementations of one rule is how the axes come to
+//! disagree about who blocked what.
 //!
-//! Pass 5 computed each member's gate and wrote the two predicates
-//! ([`Field::is_readable_from`], [`Field::is_writable_from`]). This module
-//! **applies** them and does not restate them: [`ModelView::fields_readable_from`]
-//! filters as it walks, so an unreadable member is absent from the result by
-//! *shape* rather than present as a hole, a null or a count. Two
-//! implementations of one rule is how the axes come to disagree about who
-//! blocked what.
-//!
-//! # Cyclic data is legal
-//!
-//! Only cycles through *inheritance* fail. The edge index carries data edges as
-//! well as inheritance edges and a data cycle is an ordinary shape in it, so
-//! every traversal over [`Image::out`] or [`Image::inc`] must carry a visited
-//! set (spec §0).
+//! The edge index carries data edges as well as inheritance edges, and a data
+//! cycle is an ordinary shape in it, so every traversal over [`Image::out`] or
+//! [`Image::inc`] must carry a visited set (§0).
 
 mod view;
 
@@ -56,7 +38,7 @@ use yfi_syntax::{FileId, NodeId, Span};
 use crate::check::Checked;
 use crate::discover::Project;
 use crate::intern::Interned;
-use crate::link::path::{self, Space};
+use crate::link::path;
 use crate::link::{Ctx, Linked, SourceOrder};
 use crate::scope::{ScopeId, ScopeTree};
 use crate::symbol::Symbol;
@@ -280,7 +262,6 @@ pub struct Image<'a> {
     pub(crate) inc: Flat<Edge>,
     pub(crate) ancestry: Flat<ModelId>,
     pub(crate) paths: Flat<ScopeId>,
-    pub(crate) space: Space,
     pub(crate) refused: bool,
 }
 
@@ -416,7 +397,7 @@ impl<'a> Image<'a> {
         let parsed = path::parse(text)?;
         let ctx = Ctx { project: self.project, interned: self.interned };
         let table = self.linked.table();
-        let landed = path::resolve(&ctx, &self.space, table, origin, &parsed).ok()?;
+        let landed = path::resolve(&ctx, self.linked.space(), table, origin, &parsed).ok()?;
         let Some(last) = parsed.members.last() else {
             return self.index.get(&landed).map(|id| Named::Model(ModelId(*id)));
         };
@@ -433,7 +414,8 @@ impl<'a> Image<'a> {
             segments: parsed.segments.clone(),
             ..*parsed
         };
-        let base = path::resolve(ctx, &self.space, self.linked.table(), origin, &trimmed).ok()?;
+        let base =
+            path::resolve(ctx, self.linked.space(), self.linked.table(), origin, &trimmed).ok()?;
         self.index.get(&base).map(|id| ModelId(*id))
     }
 }

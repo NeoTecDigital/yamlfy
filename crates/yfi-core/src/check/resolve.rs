@@ -3,39 +3,16 @@
 
 //! Resolving inheritance into a view per node.
 //!
-//! # Precedence (D4.7)
+//! The five precedence tiers are D4.7's, applied highest-first by call order so
+//! that left-biased absorption expresses precedence with no rank stored per
+//! entry. Four views come out, not one:
 //!
-//! Highest first, and every tier is left-biased against the ones below it:
-//!
-//! 1. every key written **directly** in A,
-//! 2. A's inclusions (`<<`), in written order,
-//! 3. A's extensions (`extends:` with an alias or an inline operand),
-//! 4. the bases of A's extended references (`extends: !ref`),
-//! 5. `own(X)` for every X holding an extended reference **to** A.
-//!
-//! Tier 5 is deliberately last: an extended reference adds to a base and never
-//! overrides it. Extensions rank below inclusions because an inclusion is a
-//! deliberate node-local statement about *this* node while a base is a general
-//! statement about a family — the specific must beat the general, or adding a
-//! `<<` to a node could be silently ignored.
-//!
-//! # Three views, not one
-//!
-//! * `own(N)` — N's literal keys with its clauses removed (D4.9).
-//! * `base(N)` — tiers 1 to 4. What N holds *without* anything installed on it
-//!   by an extended reference, which is what D4.5's additivity is measured
-//!   against.
-//! * `declared(N)` — tiers 1 and 5. The keys and tags N **declares**, including
-//!   what extended references installed on it, and excluding what it merely
-//!   *includes*: an inclusion is compositional, not definitional (D4.1), so a
-//!   key absorbed from a mixin is not a declaration of N's family.
-//! * `resolved(N)` — all five tiers.
-//!
-//! Merge is **shallow** (D1.5) and **transitive over resolved views** (D1.3): a
-//! source contributes its own resolved view, and its clause has already been
-//! discharged in producing it (D4.9). Nothing re-applies a source's clause at
-//! the including node's level, which is what keeps
-//! `fixtures/cycles/merge-diamond.yml` idempotent when `a` is reached twice.
+//! * `own(N)` — N's literal keys with its clauses removed (D4.9);
+//! * `base(N)` — tiers 1 to 4, which is what D4.5's additivity is measured
+//!   against;
+//! * `declared(N)` — tiers 1 and 5, excluding what N merely *includes*, because
+//!   an inclusion is compositional rather than definitional (D4.1);
+//! * `resolved(N)` — all five.
 //!
 //! # Evaluation order
 //!
@@ -144,12 +121,10 @@ pub(crate) fn every_holder(ctx: &Ctx) -> Vec<Place> {
 
 /// Whether a sequence is a member list: whether any item names a member.
 ///
-/// **Membership is the file class**, not a spelling (D4.12). Every scalar
-/// nested in a Yamlfication source file names a member of the collection
-/// holding it, however it is quoted or tagged; a base YAML sequence is data and
-/// names nothing. So this asks pass 3 rather than re-reading the items, and the
-/// only sequences without a view are those in a `.yaml` and those holding
-/// nothing but collections, which have no names to hold.
+/// **Membership is the file class**, not a spelling (D4.12), so this asks pass
+/// 3 rather than re-reading the items. The only sequences without a view are
+/// those in a `.yaml` and those holding nothing but collections, which have no
+/// names to hold.
 fn holds_members(ctx: &Ctx, file: yfi_syntax::FileId, node: yfi_syntax::NodeId) -> bool {
     let Some(ast) = ctx.ast(file) else { return false };
     ast.items(node)
@@ -305,17 +280,11 @@ impl Run<'_> {
 
     /// One member's gate: its own declaration, composed with its scope's.
     ///
-    /// **A member that says nothing grants nothing** (D6.4, one level down), so
-    /// an unflagged member of a `.yfy` is `private` and `immutable`. Composition
-    /// with the scope is what stops a `pub` member from granting more than the
-    /// directory holding it does — the `public` marking means "visible to
-    /// everyone who can get here", and getting here is the enclosing scope's
-    /// business (D6.5).
-    ///
-    /// **Base YAML declares nothing** (D6.6), so there is no flag to read and
-    /// the gate is the scope's alone. That is not a special case for data; it is
-    /// what "the flags are not interpreted here" means, and it leaves an
-    /// imported `.yaml`'s members exactly as readable as its directory is.
+    /// An unflagged member of a `.yfy` is `private` and `immutable` (D6.4 one
+    /// level down), composed with its scope's (D6.5). Base YAML declares
+    /// nothing (D6.6), so there is no flag to read and the gate is the scope's
+    /// alone — which leaves an imported `.yaml`'s members exactly as readable
+    /// as its directory is.
     fn gate_of(
         &self,
         file: yfi_syntax::FileId,

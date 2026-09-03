@@ -22,16 +22,13 @@
 //! parse changes and there is no collision with `!type`, `!node` or `!ref`; the
 //! prefix is read off the scalar here.
 //!
-//! **A bare member is `private` and `immutable`**, which is D6.4's rule read one
-//! level down: a scope that says nothing grants nothing, and neither does a
-//! member. The escape is the one D4.2 already uses — a quoted or tagged key is
-//! literal text — so a field genuinely called `pub x` is written `"pub x"`.
+//! A bare member is `private` and `immutable` — D6.4 one level down — and the
+//! escape is D4.2's: a quoted or tagged key is literal text, so a field
+//! genuinely called `pub x` is written `"pub x"`.
 //!
-//! **Composition needs no new rule.** A `pub` member inside a `private` scope is
-//! public *within* that scope and the scope path still gates reach from outside,
-//! which is exactly D6.5's composition one level down. Nothing here is a second
-//! predicate: the member's declaration and the scope path are combined by the
-//! same [`ScopeTree`](crate::scope::ScopeTree) walk every other reach uses.
+//! Composition needs no new rule and none is written here: the member's
+//! declaration and the scope path are combined by the same
+//! [`ScopeTree`](crate::scope::ScopeTree) walk every other reach uses (D6.5).
 //!
 //! # `brute` is not a third axis
 //!

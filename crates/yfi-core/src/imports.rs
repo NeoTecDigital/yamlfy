@@ -1,22 +1,7 @@
 // Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Import resolution — how a definition crosses a file.
-//!
-//! A header's `imports:` names other files of the project. Importing brings
-//! their definitions (from a `.yfy`) or their objects (from a `.yaml`) into
-//! *this* document, so an ordinary alias reaches them:
-//!
-//! ```yaml
-//! --- !yfi/header
-//! imports: [core/net.yfy]
-//! --- !node &Api
-//! extends: *Service
-//! ```
-//!
-//! That is why crossing a file needs no operator of its own, and why **D2.6 is
-//! untouched**: the alias still does not cross a document, because by the time
-//! `*Service` is written `Service` is already defined here.
+//! Import resolution — how a definition crosses a file (D6.7).
 //!
 //! # Paths
 //!
@@ -42,58 +27,13 @@
 //! the table — without it, `../outside/vendor.yfy` would resolve to the very
 //! file `vendor.yfy` names, importing a file by a path that leaves the project.
 //!
-//! A path that satisfies neither, or names something the extension
-//! classification ignored, resolves to nothing and is `E0240`.
+//! A path that satisfies neither is `E0240`.
 //!
-//! # Reach, and where the diagnostic points
+//! # Reach, and cycles
 //!
-//! A path that *does* name a file may still not reach it: an import is not a
-//! visibility grant (D6.7), so a target whose canonical path is gated by a
-//! `private` scope (D6.5) installs nothing. That is `E0241`, and it is a
-//! different fault from `E0240` with a different fix — the file exists, and the
-//! path is right.
-//!
-//! **It is raised here, once per resolved entry, and points at the import
-//! entry's own span.** Two other places were available and are worse. The
-//! binding pass ([`crate::bind`]) is where the consequence is enacted, but it
-//! rebinds a cyclic component until its exports settle, so one import would
-//! report as many times as the component was rebound. The exporting definition
-//! is a location the importing author cannot act on, and there is no single
-//! definition to point at anyway: the import form is whole-file.
-//!
-//! The *reason* is not local either — visibility composes over the target's
-//! whole path, so the scope that blocked the import can be a directory several
-//! levels above it — and naming that scope is most of the diagnostic's value.
-//! It goes in a note, with the span of the `visibility:` that closed it, which
-//! is the two-span shape `W0300` and `E0110` already use.
-//!
-//! The edge is still recorded. `E0241` reports what an import does not do; it
-//! does not change it.
-//!
-//! # Cycles are legal, because imports do not compose
-//!
-//! **An import is not transitive.** Importing `b` brings what `b` itself
-//! defines, never what `b` imported. Re-export is not a thing an import does.
-//!
-//! That single rule is what makes a cycle harmless. With transitivity, `a ⇄ b`
-//! would need a least fixed point over definition *sets*; that iteration does
-//! terminate — unlike D1.8's merge, whose operator *chooses* between competing
-//! values and therefore oscillates — but a name defined on both sides of the
-//! cycle would be won by whichever file the compiler visited first, and an
-//! order-dependent answer is not a meaning. Without transitivity the answer is
-//! a one-step union: `a` sees `own(a) ∪ own(b)` and `b` sees `own(b) ∪ own(a)`,
-//! whichever side is read first. Two files that describe each other are an
-//! ordinary arrangement — a service and its network, each naming the other — so
-//! rejecting the shape would cost a real modelling pattern for no benefit.
-//!
-//! **Computing `own(f)` for a cycle member still iterates**, and that is a fact
-//! about the parser rather than about the meaning: `own(f)` is read off a parse,
-//! and a member's parse cannot pass its first cross-file alias until the other
-//! side is bound. [`crate::bind`] is where that is resolved, and where the
-//! iteration is bounded and argued.
-//!
-//! Cycles are therefore recorded rather than diagnosed, so a later pass and a
-//! human can both see the shape.
+//! `E0241` is raised here rather than in [`crate::bind`], once per resolved
+//! entry; the edge is recorded either way. Import cycles are recorded rather
+//! than diagnosed, so a later pass and a human can both see the shape (D6.7).
 
 use std::collections::HashMap;
 // `Component` is taken here by the import graph's own SCC type, below.

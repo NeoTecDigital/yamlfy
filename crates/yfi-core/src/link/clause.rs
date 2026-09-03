@@ -3,37 +3,18 @@
 
 //! Inheritance clauses, and whether their operands are legal (`E0211`).
 //!
-//! Two clauses exist and they are different operations (D4.1):
+//! Two clauses, two operations (D4.1). `<<:` is inclusion and is governed in
+//! **both** file classes, because merge is YAML's and not ours (D6.6);
+//! `extends:` is extension, or an extended reference when the operand carries
+//! `!ref`, and is interpreted only in Yamlfication source.
 //!
-//! * `<<:` — **inclusion**. A has B as one of its members. B is unchanged and
-//!   nothing else in the program observes anything. Governed in **both** file
-//!   classes, because merge is YAML's and not ours (D6.6).
-//! * `extends:` — **extension** with an alias or an inline mapping, and an
-//!   **extended reference** with a `!ref`. The operand selects the operation,
-//!   and only the `!ref` form reaches back into the base. Interpreted only in
-//!   Yamlfication source.
-//!
-//! # Legal operands
-//!
-//! D1.6, as extended by D4.3: a mapping, an alias to one, a **path** resolving
-//! to one, or a **flat** sequence whose every element is one of those three. A
-//! path may be written plain or carry `!ref`; the tag changes what the clause
-//! *does*, not whether the operand is legal. Anything else — a scalar that is
-//! not a path, a nested sequence, an alias to either — is `E0211`. A path
-//! resolving to nothing is `E0213` and is *not* also `E0211`: it has already
-//! been reported once, and a second code about the same token would send the
-//! author looking for a second fault.
-//!
-//! An alias the parse already refused — `E0130`, an anchor of an earlier
-//! document — is dropped here without a second diagnostic. The binding the
-//! parser recorded is real enough to index with and the language still says the
-//! node cannot name it, so keeping the operand would put a base on the node's
-//! `is_a` axis that nothing else in the compiler agrees exists.
-//!
-//! An `extends` entry whose operand is illegal is reported, never
-//! reinterpreted. Treating it as an ordinary field instead would let a mistake
-//! in the value silently decide whether the key is an operation, producing a
-//! node that quietly stopped inheriting with nothing pointing at it.
+//! Legal operands are D1.6's as extended by D4.3, and the `!ref` tag changes
+//! what the clause *does* rather than whether the operand is legal. Two rules
+//! about the reporting: a path resolving to nothing is `E0213` and is *not*
+//! also `E0211`, because a second code about one token sends the author looking
+//! for a second fault; and an illegal operand is reported, never reinterpreted
+//! as an ordinary field, which would let a mistake in the value silently decide
+//! whether the key is an operation at all.
 
 use yfi_syntax::{Ast, Code, Diagnostic, Diagnostics, FileId, NodeId, Span};
 

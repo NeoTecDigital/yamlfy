@@ -8,33 +8,11 @@
 //! **side structure** keyed by `(FileId, NodeId)` rather than a mutation of the
 //! arena. The image *is* the side table.
 //!
-//! Two passes live here so far.
-//!
-//! * [`discover`] — pass 1. Walk a project tree, classify each file as
-//!   Yamlfication source (`.yfy`) or base YAML (`.yml`/`.yaml`), load every one
-//!   into one [`SourceMap`](yfi_syntax::SourceMap), read source headers,
-//!   resolve their imports, build the scope tree from the directory hierarchy
-//!   and resolve both scope axes. A file that imports anything is then parsed a
-//!   second time with those imports bound into it (`bind`, pass 1b), because a
-//!   header can only be read from a parse and its imports have to be installed
-//!   before that file's first document event.
-//! * [`intern`] — pass 3. Intern every key, tag suffix and namespace component;
-//!   classify tags; build the node→document and node→parent maps; record each
-//!   node's resolved scope path.
-//!
-//! * [`link`] — pass 4. Build the definition table, walk every path,
-//!   validate inheritance-clause operands and build the stratified inheritance
-//!   graph pass 5 runs SCC over.
-//! * [`check`] — pass 5. Detect cyclic inheritance, resolve inheritance into a
-//!   view per node, and validate every concrete node against its abstract
-//!   ancestors' declarations.
-//!
-//! * [`emit`] — pass 6. Turn the resolved views into an [`image`]: a model per
-//!   node marked abstract or concrete, its ancestor chain, a CSR edge index in
-//!   both directions over inheritance *and* data edges, its scope path, and the
-//!   name index a path query resolves against.
-//!
-//! Pass 2 is `yfi_syntax::parse`, driven by pass 1.
+//! [`discover`] is pass 1, [`intern`] 3, [`link`] 4, [`check`] 5 and [`emit`]
+//! 6; §9 tables what each owns. Pass 2 is `yfi_syntax::parse`, driven by pass 1
+//! — and driven **twice** for a file that imports anything, because a header
+//! can only be read from a parse and its imports must be installed before that
+//! file's first document event (`bind`, pass 1b).
 //!
 //! # Example
 //!
@@ -72,22 +50,23 @@ pub mod image;
 pub mod intern;
 pub mod link;
 pub mod member;
-pub mod order;
 pub mod scope;
 pub mod symbol;
 pub mod tags;
 
 pub use discover::{
-    discover, discover_in, DiscoverOptions, FileClass, Project, ProjectFile,
+    discover, discover_in, identity, DiscoverOptions, FileClass, Project, ProjectFile,
     DEFAULT_DATA_EXTENSIONS, DEFAULT_SOURCE_EXTENSIONS,
 };
 pub use edge::{CONNECTIONS, DEFINITION};
 pub use emit::emit;
 pub use header::Header;
-pub use image::{Edge, EdgeKind, FieldView, Image, ModelId, ModelKind, ModelView, Named};
+// `Edge` and `EdgeKind` are deliberately absent: `link` and `image` each define
+// a type of both names and they are not the same set of kinds. Both are reached
+// through their own module, so `use yfi_core::EdgeKind` cannot silently pick one.
+pub use image::{FieldView, Image, ModelId, ModelKind, ModelView, Named};
 pub use intern::{intern, FileIndex, Interned, Member};
 pub use member::MemberFlags;
-pub use order::NodeOrder;
 pub use scope::{Declared, Mutability, Scope, ScopeId, ScopeKind, ScopeTree, Visibility};
 pub use symbol::{Symbol, SymbolTable};
 pub use tags::{classify, TagKind};

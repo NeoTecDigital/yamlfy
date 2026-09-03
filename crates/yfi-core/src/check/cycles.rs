@@ -4,33 +4,18 @@
 //! `E0212` — cyclic inheritance.
 //!
 //! A cycle in the inheritance graph is an error, not a fixed point (D1.8,
-//! D4.10). On key sets alone a least fixed point would exist; on **values** it
-//! does not, because left-biased union *chooses* between competing values and
-//! choice is not monotone. `fixtures/cycles/merge-oscillating.yml` oscillates
-//! with period two under simultaneous iteration and converges to whichever
-//! answer the visit order produces under sequential iteration. An
-//! order-dependent answer is not a meaning, so the construct is rejected rather
-//! than resolved — uniformly, including a one-cycle, because a rule that fired
-//! only when the cycle was *observable* would make a document's legality depend
-//! on which values happened to collide.
+//! D4.10), and it is rejected uniformly, including a one-cycle.
 //!
-//! # Two things this gets right that are easy to get wrong
+//! Two things this gets right that are easy to get wrong. **The notes name the
+//! *forward* edges**: the reverse edge of an extended reference ends at a sink
+//! and cannot lie on a cycle, so naming it would blame the innocent half while
+//! the author is already certain the `!ref` is at fault. **The primary span is
+//! the textually first member**: the arena is post-order, so the lowest-indexed
+//! member of a component is its deepest-leftmost *leaf* rather than the node
+//! written first, and members are ordered by `(file rank, document index,
+//! source position)` instead.
 //!
-//! **The notes name the *forward* edges.** In `A extends: !ref B` with
-//! `B << A` the cycle closes through `R(A) → R(B)` and `R(B) → R(A)`; the
-//! reverse edge `R(B) → own(A)` ends at a sink and cannot lie on a cycle.
-//! Naming it would blame the innocent half while the author is already certain
-//! the `!ref` is at fault.
-//!
-//! **The primary span is the textually first member.** The arena is
-//! post-order, so the lowest-indexed member of a component is its
-//! deepest-leftmost *leaf* rather than the node written first. Members are
-//! ordered by `(file rank, document index, source position)` instead.
-//!
-//! # What is not an error
-//!
-//! Cycles in the **data** graph are legal and are the point of the system.
-//! Only cycles through inheritance edges are rejected;
+//! Cycles in the **data** graph are legal and are the point of the system;
 //! `fixtures/cycles/alias-cycle-with-merge-dag.yml` is the fixtured case.
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics, Span};

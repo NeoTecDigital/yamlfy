@@ -1,50 +1,31 @@
 // Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Pass 6 — emission.
+//! Pass 6 — emission: the first pass whose output is a shape rather than a
+//! verdict.
 //!
-//! Pass 5 answered *what does each node mean, and is that allowed*. Pass 6
-//! answers *what does the graph look like when you have to walk it*, and it is
-//! the first pass whose output is a shape rather than a verdict.
+//! It builds one [`Image`] — a node per resolved holder, marked concrete or
+//! abstract (D7.1, D6.6); each node's ancestor chain, because flattening
+//! destroys the `is_a` axis; a CSR edge index in both directions over the three
+//! operators, the bare capability declaration, data edges and every `!edge`'s
+//! `connections` (D4.13); each node's scope path; and the name index a path
+//! query resolves against.
 //!
-//! It builds one [`Image`]:
-//!
-//! * a node per resolved holder, marked **concrete** (`!node`) or **abstract**
-//!   (`!type`, untagged, or anything in base YAML — D7.1, D6.6);
-//! * each node's **ancestor chain**, because flattening destroys the `is_a`
-//!   axis and retaining it is the whole reason `extends` is not `<<`;
-//! * a **CSR edge index in both directions**, over the three operators, the
-//!   bare capability declaration, **data edges** and the **connections** of
-//!   every `!edge` node (D4.13);
-//! * each node's **scope path**, so an access question needs no tree walk;
-//! * the **name index** a path query resolves against.
-//!
-//! # What it refuses
-//!
-//! Emission is refused outright when [`Checked::is_cyclic`] holds. Pass 5 still
-//! composed a view for every node, over a graph made acyclic by dropping back
-//! edges — but that is a recovery and not a language semantic, and shipping it
-//! would put a value in the output that no source text means. A refused image
-//! holds nothing.
+//! Emission is refused outright when [`Checked::is_cyclic`] holds, because a
+//! recovered view is not a language semantic (D1.8). A refused image holds
+//! nothing.
 //!
 //! Because emission is refused there, the graph pass 6 walks is a **DAG on the
 //! inheritance edges**, and the dropped-edge set is empty by construction. That
 //! is why [`Checked::ancestors`] has nothing to drop when pass 6 asks it.
 //!
-//! # Data edges are the ones that may cycle
-//!
-//! Only *inheritance* cycles are illegal. `a: ./B` in one file and `b: ./A` in
-//! the next is a legal, intended shape, so every traversal over the edge index
-//! carries a visited set (spec §0) and the index itself is built by a single
-//! pass with no traversal at all.
-//!
-//! # One forward scan, no recursion
+//! Data cycles stay legal, so every traversal over the edge index carries a
+//! visited set (§0); the index itself is built by one pass with no traversal.
 //!
 //! The arena is post-order — a collection's `NodeId` exceeds every child's — so
 //! the node set is gathered by one forward scan per file. Ordering for anything
 //! user-visible is `(file rank, document index, source position)` via
-//! [`crate::link::source_order`]; `NodeOrder`'s node component is the arena
-//! index and is *not* textual order.
+//! [`crate::link::source_order`], never the arena index.
 //!
 //! # Example
 //!
@@ -64,14 +45,13 @@ mod relations;
 use std::collections::{HashMap, HashSet};
 
 use tracing::debug;
-use yfi_syntax::{FileId, NodeId, Pos, Span};
+use yfi_syntax::{FileId, NodeId};
 
 use crate::check::{self, Checked};
 use crate::discover::Project;
 use crate::edge;
 use crate::image::{Flat, Image, Model, ModelId, ModelKind};
 use crate::intern::Interned;
-use crate::link::path::Space;
 use crate::link::{source_order, Ctx, Linked, SourceOrder};
 use crate::scope::ScopeId;
 
@@ -91,11 +71,11 @@ pub fn emit<'a>(
     linked: &'a Linked,
     checked: &'a Checked,
 ) -> Image<'a> {
-    let ctx = Ctx { project, interned };
     if checked.is_cyclic() {
         debug!("emission refused: the inheritance graph held a cycle");
-        return empty(project, interned, linked, checked, &ctx, true);
+        return refused(project, interned, linked, checked);
     }
+    let ctx = Ctx { project, interned };
     let raw = raw_edges(&ctx, linked, checked);
     let places = places(&ctx, checked, &raw);
     let index: HashMap<Place, u32> = places
@@ -127,19 +107,16 @@ pub fn emit<'a>(
         inc,
         ancestry,
         paths,
-        space: Space::build(&ctx),
         refused: false,
     }
 }
 
 /// An image holding nothing, which is what a cyclic project emits.
-fn empty<'a>(
+fn refused<'a>(
     project: &'a Project,
     interned: &'a Interned,
     linked: &'a Linked,
     checked: &'a Checked,
-    ctx: &Ctx,
-    refused: bool,
 ) -> Image<'a> {
     Image {
         project,
@@ -153,8 +130,7 @@ fn empty<'a>(
         inc: Flat::empty(0),
         ancestry: Flat::empty(0),
         paths: Flat::empty(0),
-        space: Space::build(ctx),
-        refused,
+        refused: true,
     }
 }
 
@@ -217,7 +193,7 @@ fn models(ctx: &Ctx, places: &[Place]) -> Vec<Model> {
                 .scope_of(place.0, place.1)
                 .or_else(|| ctx.project.scopes().root())
                 .unwrap_or(ScopeId(0)),
-            span: span_of(ctx, *place),
+            span: ctx.span_of(place.0, place.1),
             order: order_of(ctx, *place),
         })
         .collect()
@@ -235,12 +211,6 @@ fn kind_of(ctx: &Ctx, place: Place) -> ModelKind {
         true => ModelKind::Concrete,
         false => ModelKind::Abstract,
     }
-}
-
-fn span_of(ctx: &Ctx, place: Place) -> Span {
-    ctx.ast(place.0)
-        .and_then(|ast| ast.nodes().get(place.1.index()).map(|node| node.span))
-        .unwrap_or_else(|| Span::empty(place.0, Pos { byte: 0, line: 1, col: 1 }))
 }
 
 /// Each node's `is_a` axis, nearest first.

@@ -3,11 +3,9 @@
 
 //! Member flags, and the `.yfy` front end reaching the semantic passes.
 //!
-//! `pub`/`public` and `mut`/`mutable` are prefixes on a member name, not tags:
-//! `- pub mut name` is the ordinary YAML string `"pub mut name"` and the prefix
-//! is read off the scalar. A bare member is `private` and `immutable`, which is
-//! D6.4's rule one level down — a member that says nothing grants nothing — and
-//! the gate is composed with its scope's, which is D6.5's rule one level down.
+//! The prefixes are not tags, a bare member is `private` and `immutable`, and
+//! the member's gate composes with its scope's — D4.12, and D6.4 and D6.5 one
+//! level down.
 
 mod common;
 
@@ -122,13 +120,8 @@ fn a_public_member_of_a_private_scope_is_public_only_inside_it() {
 
 #[test]
 fn every_nested_scalar_of_a_yfy_is_a_member_however_it_is_written() {
-    // **A member is anything nested inside something else**, exactly as YAML
-    // nests, and the discriminator is the file class. A `.yfy` is not a data
-    // store: what is nested in it are members, and the data is what is
-    // evaluated from that structure. Quoting is the escape for the *prefix*
-    // (D4.2, one level down) and has never been a rule about membership —
-    // letting it be one would put a signal inside the file in charge of a
-    // semantic question, which is what D6.6 forbids one level up.
+    // Quoting is the escape for the *prefix* (D4.2 one level down) and has
+    // never been a rule about membership.
     let fixture = open("member-flags");
     let file = fixture.file("app/app.yfy");
     let tags = common::entry_at(&fixture.project, file, 1, &["Service", "tags"]);

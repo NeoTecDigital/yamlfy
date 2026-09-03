@@ -82,17 +82,10 @@ pub fn parse(sources: &SourceMap, file: FileId, options: &ParseOptions) -> Parse
 /// The `&name` tokens written in a file, read from its text without parsing it,
 /// in source order and each carrying its own span.
 ///
-/// **This is not a parse and does not pretend to be one.** A `&x` inside a plain
-/// scalar reads exactly like a node property to a lexer, so the answer is an
-/// over-approximation of what the file really anchors, and the shape of every
-/// name is all it can honestly claim.
-///
-/// It exists for one caller: a file whose cross-file aliases cannot bind yet
-/// cannot be parsed past the first of them, because an unknown alias is a *scan*
-/// error and recovery resumes only at the next document boundary — so every
-/// anchor written after it is lost. Files that import each other are all in that
-/// state at once and none of them can go first, so their binding needs a
-/// starting approximation that no parse can supply (D6.7).
+/// **This is not a parse and does not pretend to be one**: a `&x` inside a
+/// plain scalar reads like a node property to a lexer, so the answer is an
+/// over-approximation. It exists for one caller, the binding fixed point over
+/// an import cycle, which no parse can seed (D6.7).
 #[must_use]
 pub fn anchor_names(sources: &SourceMap, file: FileId) -> Vec<Import> {
     let source = sources.file(file);

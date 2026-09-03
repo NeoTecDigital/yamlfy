@@ -4,18 +4,10 @@
 //! The `!yfi/header` document.
 //!
 //! A file's header is the **first** document of its stream, tagged
-//! `!yfi/header`. It is optional: a file without one declares nothing and
-//! inherits everything from its directory scope.
-//!
-//! Only a Yamlfication source file has a header. In a base YAML data file a
-//! `!yfi/header` document is an ordinary tagged mapping and nothing else, so
-//! [`read`] is never called on one — see `discover::FileClass`.
-//!
-//! The header carries the file boundary. `imports:` names other files of the
-//! project; importing brings their definitions or objects into *this* document,
-//! which is what lets an ordinary alias reach them. That is why crossing a file
-//! needs no new operator and why D2.6 is untouched: by the time `*Service` is
-//! written, `Service` is already defined in this document.
+//! `!yfi/header`, and it is optional: a file without one declares nothing and
+//! inherits everything from its directory scope (D6.1). Only a Yamlfication
+//! source file has one — in a base YAML file a `!yfi/header` document is an
+//! ordinary tagged mapping (D6.6), so [`read`] is never called on it.
 //!
 //! Unknown keys are ignored rather than rejected. `fixtures/valid/header-document.yfy`
 //! already carries a `schema:` key that no pass reads yet, and the header is the

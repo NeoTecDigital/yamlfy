@@ -3,16 +3,11 @@
 
 //! Pass 5 — what a path may reach, and who may read a resolved member.
 //!
-//! Two questions, one model. **The epistemic gate** decides whether a reach is
-//! allowed at all: `E0216` for a path into a scope this one cannot see,
-//! `E0217` for a `!ref` — mutation intent — into a scope this one may not
-//! write. They are asked in that order and in *different passes*: `E0216`
-//! inside pass 4's path resolution, in front of the lookup, so that an
-//! invisible target resolves to nothing at all; `E0217` in pass 5, of a target
-//! that already resolved. **Access** then decides, per member, whether a reader may see it —
-//! and that depends on the *relationship* that brought the member into the node
-//! holding it, which is why `Acquisition` is asserted alongside `Visibility`
-//! throughout.
+//! Two questions, one model (D4.12). The **epistemic gate** — `E0216` in pass
+//! 4, `E0217` in pass 5 — decides whether a reach is allowed at all. **Access**
+//! then decides, per member, whether a reader may see it, and that depends on
+//! the *relationship* that brought the member in, which is why `Acquisition` is
+//! asserted alongside `Visibility` throughout.
 //!
 //! `E0215` — "`!ref` into a file this file does not import" — was retired by
 //! the path amendment and the tests that asserted it are rewritten below rather
@@ -79,12 +74,8 @@ fn e0216_fires_on_a_path_into_a_scope_the_referencing_scope_cannot_see() {
 
 #[test]
 fn an_invisible_target_answers_the_same_whether_the_member_exists_or_not() {
-    // The disclosure this closes: three probes at one private scope used to
-    // earn three distinguishable answers -- `E0216` naming the definition's
-    // file, line and column for a member that exists, `E0218` for one that does
-    // not, and `E0213` for a node that does not. Between them an outsider
-    // enumerates a private scope's node names and each node's member names,
-    // which is exactly the access D4.12 says it has none of.
+    // The answer's shape must not vary with whether the node or the member
+    // exists; three distinguishable answers enumerate the scope (D4.12).
     let fixture = open("private-opacity");
     let rendered = fixture.rendered();
     assert_eq!(fixture.count(Code::RefNotVisible), 3, "{rendered}");

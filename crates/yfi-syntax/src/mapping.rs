@@ -101,11 +101,8 @@ pub(crate) fn check_keys(ast: &Ast, entries: &[Entry], diags: &mut Diagnostics) 
 /// `E0111` — `!!merge` on a **non-scalar** key.
 ///
 /// D1.1 says a merge key is a *scalar* tagged `!!merge`, so `!!merge [k]: 1` is
-/// correctly not one. What it becomes is an ordinary complex key, and the tag
-/// then classifies nothing, resolves nothing and is consumed by nothing. A tag
-/// that means nothing is worse than one that does not exist — the argument
-/// D7.4 makes for `!oneof` and D4.13 makes for `E0223`, and it holds here for
-/// the same reason: silence leaves the author believing they wrote a merge.
+/// correctly not one — it is an ordinary complex key, and the tag then means
+/// nothing. Silence there leaves the author believing they wrote a merge.
 ///
 /// The **other** silence in this position is deliberate and stays. Two complex
 /// keys alike in one mapping are not reported, because key identity in this
