@@ -44,8 +44,15 @@ fn open(name: &str) -> Compiled {
 fn every_example_compiles_without_an_error() {
     for name in examples() {
         let fixture = open(&name);
+        // All three collections. Asking only `link` and `check` leaves every
+        // code `discover` and `parse` own invisible, so an example with a
+        // syntax error, an unreadable file or an unresolvable import passed
+        // this test while `yamlfy check` reported it and exited 1. The passes
+        // keep separate collections and a reader runs the command, not one
+        // pass.
         assert!(
-            !fixture.linked.diagnostics().has_errors()
+            !fixture.project.diagnostics().has_errors()
+                && !fixture.linked.diagnostics().has_errors()
                 && !fixture.checked.diagnostics().has_errors(),
             "examples/{name} does not compile:\n{}",
             fixture.rendered()

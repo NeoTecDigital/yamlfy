@@ -4,8 +4,10 @@
 version: 1
 namespace: guild::stock
 visibility: public
-# `mutable`, because the last section of this file writes an extended
-# reference, and that is a compile-time write to its target.
+# An extended reference is a compile-time write, so its target must be writable
+# from where the reference is written. Within one scope that always holds, so
+# this line is a declaration of intent rather than what permits the write below;
+# the gate bites across a directory boundary. See `02-scopes`.
 mutability: mutable
 
 # An ordinary anchored mapping. Untagged, so it is abstract: inheritable, and

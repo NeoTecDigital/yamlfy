@@ -37,7 +37,7 @@ visibility: public
 // A base every potion shares. `!type` is abstract: inheritable, never emitted.
 BasePotion: !type &BasePotion
   pub vessel: vial
-  pub label: !!str            <?-- required: a tag with no value --!>
+  pub label: !!str untitled   <?-- a tag with a value: optional, with a default --!>
 
 water: &water
   pub solvent: spring-water

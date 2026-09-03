@@ -5,14 +5,16 @@ version: 1
 namespace: acme::billing
 visibility: public
 schema: ../schema/invoice
-# `mutable`, because a `!ref` written against this scope declares an intent to
-# modify its target and is refused otherwise.
+# An extended reference is a compile-time write and its target must be writable
+# from where the reference is written. Within one scope that always holds, so
+# this states intent; the gate bites across a directory boundary.
 mutability: mutable
 --- !node &cust-42
 name: Acme Corporation
 --- !node &invoice-001
-# A plain path is a read-only reach; `!ref` is the one that declares a write.
-customer: cust-42
+# A path in a data position must be anchored: `./x` or `../x`. An unanchored
+# scalar there stays a string, which is why `region: eu-west` is text.
+customer: ./cust-42
 lines:
   - &line-a {sku: A-1, qty: 2}
   - &line-b {sku: B-2, qty: 1}

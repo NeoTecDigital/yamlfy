@@ -25,8 +25,13 @@ alias by copying cannot express a ring at all — it either duplicates forever o
 
 ```yfy
 --- !node &Third
-pub next: First      # `First` is written below this
+pub next: ./First    # `First` is written below this
 ```
+
+The `./` is not decoration. In a **data** position an unanchored scalar stays a string —
+`region: eu-west` is the text `eu-west`, not a reach — so a path there is written `./x`
+or `../x`. Under `<<:` or `extends:` no anchor is needed, because a scalar in an operand
+position was never anything but a path.
 
 A path resolves by **name**, so it can close a ring. An alias could not: `*First` binds
 to a definition that already exists at the point the alias is written, which is why a

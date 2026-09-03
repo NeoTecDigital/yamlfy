@@ -156,8 +156,10 @@ impl Run {
     /// Print the selected files' diagnostics, and their arenas when asked.
     ///
     /// The three collections are kept apart by the passes that raise them and
-    /// are merged here, in pipeline order, so a fault is read before whatever
-    /// it caused downstream.
+    /// are merged here so one count and one exit code cover all of them.
+    /// Merge order does not decide print order: [`Diagnostics::render`] sorts
+    /// by position, so a reader gets a file read top to bottom rather than
+    /// grouped by which pass happened to find what.
     fn report(
         &mut self,
         project: &Project,

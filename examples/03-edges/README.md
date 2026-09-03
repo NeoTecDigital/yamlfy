@@ -55,7 +55,9 @@ pub connections: []
 pub since: !!str unknown
 ```
 
-`Owns` and `SharesRotation` both extend `Relation` and inherit `since`. An edge that
+`Owns` and `SharesRotation` both extend `Relation`, so both are declared to carry a
+`since` — and both write their own, which is why the inherited default is not what you
+see in the resolved view. An edge that
 supplies no `connections` of its own would inherit its family's endpoints, by nothing
 more than what extension already means.
 

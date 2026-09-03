@@ -200,3 +200,22 @@ fn the_reserved_tag_is_reported_rather_than_silently_ignored() {
     assert!(text.contains("error[E0222]"), "{text}");
     assert!(text.contains("modes.yfy:7:14"), "{text}");
 }
+
+#[test]
+fn the_semantic_passes_reach_the_command_line() {
+    // Every code asserted elsewhere in this file is owned by `discover` or
+    // `parse`. This is the only test that fails if `check` stops running
+    // `intern`, `link` and `check` -- which is what it did until recently,
+    // reporting `0 error(s)` on a project raising six. A compiler whose
+    // semantic errors are invisible from a terminal is one whose errors
+    // nobody sees, so the assertion is on codes no file reader can raise.
+    let path = project("edge-errors");
+    let output = yamlfy(&["check", path.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(!output.status.success(), "a project raising errors must exit 1: {text}");
+    for code in ["E0213", "E0223", "E0224", "E0225"] {
+        assert!(text.contains(&format!("error[{code}]")), "{code} never reached stdout: {text}");
+    }
+    assert!(text.contains("6 error(s)"), "{text}");
+}

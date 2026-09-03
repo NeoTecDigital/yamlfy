@@ -34,9 +34,14 @@ relationship. The Guild's definition of a potion is exactly what it was that mor
 potion that has a seal; it adds a seal to **`BasePotion` itself**. Every potion in the
 building now has one — including `SleepingTonic`, which nobody edited.
 
-That is why the two spellings had to look different, and it is also why the default on
-both axes is closed: `BasePotion` can only be extended by reference because its scope
-says `mutability: mutable`. Take that line out and the write is refused.
+That is why the two spellings had to look different.
+
+A note on the mutability axis, because it is easy to over-claim: `extends: !ref` is a
+compile-time **write**, so the target must be writable from where the reference is
+written. Here it always is — `Sealed` and `BasePotion` share one scope, and a scope is
+open to an observer sitting inside it. Removing `mutability: mutable` from this file
+changes nothing. The gate bites across a **directory boundary**, which is what
+[`02-scopes`](../02-scopes) shows.
 
 ## The warning is deliberate
 

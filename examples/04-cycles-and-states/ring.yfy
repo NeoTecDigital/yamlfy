@@ -17,12 +17,12 @@ pub name: third
 # Closing the ring. A path resolves by name, so it may name a node written
 # later in the file; an alias could not, because an alias binds to a
 # definition that already exists at the point it is written.
-pub next: First
+pub next: ./First
 --- !node &Second
 extends: Node
 pub name: second
-pub next: Third
+pub next: ./Third
 --- !node &First
 extends: Node
 pub name: first
-pub next: Second
+pub next: ./Second
