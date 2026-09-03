@@ -123,11 +123,29 @@ impl SourceFile {
         &self.path
     }
 
-    /// The contents **as written**, with any byte-order mark removed. Every
-    /// [`Pos::byte`] indexes this string.
+    /// The contents **as written**, with any byte-order mark removed.
+    ///
+    /// A [`Pos::byte`] does **not** index this string directly. It is an offset
+    /// into the file's own bytes, mark included, because that is what a reader
+    /// comparing a diagnostic against `hexdump` or an editor's byte column
+    /// needs; this string starts after the mark. Subtract
+    /// [`SourceFile::byte_base`] to cross between them, which is zero for the
+    /// overwhelming majority of files and exactly the point of asking rather
+    /// than assuming.
     #[must_use]
     pub fn text(&self) -> &str {
         self.written.as_deref().unwrap_or(&self.text)
+    }
+
+    /// Bytes stripped from the front of the file before [`SourceFile::text`]
+    /// begins — the length of a byte-order mark, or zero.
+    ///
+    /// This is the whole difference between a [`Pos::byte`] and an index into
+    /// [`SourceFile::text`], and it is exposed so that difference can be
+    /// written down instead of guessed at.
+    #[must_use]
+    pub fn byte_base(&self) -> u32 {
+        self.byte_base
     }
 
     /// The contents the **parser read**: [`SourceFile::text`] for base YAML,
@@ -412,68 +430,4 @@ fn build_char_offsets(text: &str) -> Vec<u32> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn file(text: &str) -> (SourceMap, FileId) {
-        let mut map = SourceMap::new();
-        let id = map.add("t.yml", text);
-        (map, id)
-    }
-
-    #[test]
-    fn ascii_uses_the_identity_offset_table() {
-        let (map, id) = file("abc\ndef\n");
-        let f = map.file(id);
-        assert_eq!(f.char_len(), 8);
-        assert_eq!(f.char_to_local_byte(5), 5);
-        assert_eq!(f.char_at(4), Some('d'));
-    }
-
-    #[test]
-    fn multi_byte_characters_shift_byte_offsets() {
-        let (map, id) = file("a: héllo\n");
-        let f = map.file(id);
-        assert_eq!(f.char_at(4), Some('é'));
-        assert_eq!(f.char_to_local_byte(4), 4);
-        assert_eq!(f.char_to_local_byte(5), 6, "é occupies two bytes");
-        assert_eq!(f.slice_chars(3, 8), "héllo");
-    }
-
-    #[test]
-    fn a_bom_is_stripped_and_accounted_for() {
-        let (map, id) = file("\u{feff}key: 1\n");
-        let f = map.file(id);
-        assert_eq!(f.text(), "key: 1\n");
-        assert_eq!(f.pos_at_char(0).byte, 3, "byte offsets stay relative to the file");
-        assert_eq!(f.pos_at_char(0).line, 1);
-        assert_eq!(f.pos_at_char(0).col, 1);
-    }
-
-    #[test]
-    fn positions_are_one_based_in_both_axes() {
-        let (map, id) = file("ab\ncd\n");
-        let f = map.file(id);
-        assert_eq!((f.pos_at_char(0).line, f.pos_at_char(0).col), (1, 1));
-        assert_eq!((f.pos_at_char(3).line, f.pos_at_char(3).col), (2, 1));
-        assert_eq!((f.pos_at_char(4).line, f.pos_at_char(4).col), (2, 2));
-    }
-
-    #[test]
-    fn line_starts_locate_document_boundaries() {
-        let (map, id) = file("a\n--- b\nc\n");
-        let f = map.file(id);
-        assert_eq!(f.line_count(), 4);
-        assert_eq!(f.line_start_char(2), 2);
-        assert_eq!(f.slice_chars(f.line_start_char(2), f.line_start_char(2) + 3), "---");
-    }
-
-    #[test]
-    fn out_of_range_indices_clamp_instead_of_panicking() {
-        let (map, id) = file("ab");
-        let f = map.file(id);
-        assert_eq!(f.char_at(99), None);
-        assert_eq!(f.slice_chars(99, 200), "");
-        assert_eq!(f.pos_at_char(99).col, 3);
-    }
-}
+mod tests;

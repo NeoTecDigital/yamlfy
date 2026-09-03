@@ -1,0 +1,15 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::plain
+visibility: public
+# `connections` is not a reserved word. No `!edge` reads either of these, so
+# the member is an ordinary member and its items are ordinary values — which
+# they have to be, because there is no prefix in that position for a quote to
+# escape and an author given a reserved word here would have no way out of it.
+--- !type &Router
+pub connections: ["eth0", "eth1"]
+--- !node &Switch
+pub connections: [eth0, eth1]
+pub definition: whatever this happens to say

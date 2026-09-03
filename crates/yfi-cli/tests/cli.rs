@@ -219,3 +219,49 @@ fn the_semantic_passes_reach_the_command_line() {
     }
     assert!(text.contains("6 error(s)"), "{text}");
 }
+
+// ------------------------------------------------- the invocation-wide report
+
+#[test]
+fn two_projects_in_one_run_each_render_against_their_own_files() {
+    // The single-`SourceMap` invariant, made observable. `FileId` is an index
+    // into that map and the report is rendered once, at the end, from one
+    // accumulated collection -- so a second map would restart at `FileId(0)`
+    // and the second project's findings would name the first project's files.
+    // Two roots, two codes, and each must point at the file that earned it.
+    let a = project("import-missing/app.yfy");
+    let b = project("reserved-tag/modes.yfy");
+    let output = yamlfy(&["check", a.to_str().unwrap(), b.to_str().unwrap()]);
+    let text = stdout(&output);
+
+    assert!(!output.status.success(), "{text}");
+    for (code, file) in [("E0240", "import-missing/app.yfy"), ("E0222", "reserved-tag/modes.yfy")] {
+        let line = text
+            .lines()
+            .find(|line| line.contains(&format!("error[{code}]")))
+            .unwrap_or_else(|| panic!("no {code} in:\n{text}"));
+        assert!(line.contains(file), "{code} rendered against the wrong file: {line}");
+    }
+    assert!(text.contains("3 error(s), 0 warning(s)"), "one count over the whole run: {text}");
+}
+
+#[test]
+fn a_deny_flag_reaches_a_code_only_the_semantic_passes_raise() {
+    // `W0303` is `link`'s, not the parser's, so this fails unless the severity
+    // map is handed to `link_with` -- which is where severity is decided, once,
+    // because `allow` has to suppress *recording* and nothing downstream can
+    // un-record what it never received.
+    let path = project("link-inert-contribution");
+    let quiet = yamlfy(&["check", path.to_str().unwrap()]);
+    assert!(quiet.status.success(), "{}", stdout(&quiet));
+    assert!(stdout(&quiet).contains("warning[W0303]"), "{}", stdout(&quiet));
+
+    let strict = yamlfy(&["--deny", "W0303", "check", path.to_str().unwrap()]);
+    let text = stdout(&strict);
+    assert!(!strict.status.success(), "{text}");
+    assert!(text.contains("error[W0303]"), "{text}");
+    assert!(!text.contains("warning[W0303]"), "decided once, not re-decided: {text}");
+
+    let allowed = yamlfy(&["--allow", "W0303", "check", path.to_str().unwrap()]);
+    assert!(!stdout(&allowed).contains("W0303"), "{}", stdout(&allowed));
+}

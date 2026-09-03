@@ -3,11 +3,15 @@
 
 //! Pass 5 — the check pass, over the project corpus.
 //!
-//! Six codes are owed here and each has a project fixture that fires it:
-//! `E0212` (cyclic inheritance), `E0216` and `E0217` (what a path may reach and
-//! what a `!ref` may change),
+//! Five codes are owed here and each has a project fixture that fires it:
+//! `E0212` (cyclic inheritance), `E0217` (what a `!ref` may change),
 //! `E0220` (required field unsatisfied), `E0221` (declared-tag mismatch) and
 //! `W0301` (undeclared field), plus `W0303` widened to a resolved base.
+//!
+//! `E0216` — what a path may *reach* — is pass 4's: an invisible target has to
+//! resolve to nothing, or member resolution runs against it first and the
+//! answer discloses what the gate refused. It is asserted in `tests/access.rs`
+//! beside the gate it belongs to.
 //!
 //! The rest is about the two things a plausible wrong implementation gets wrong
 //! and still passes a diagnostic-count test: a cycle reported against the
@@ -16,7 +20,7 @@
 
 mod common;
 
-use common::pipeline::{open, open_at};
+use common::pipeline::{open, open_at, through};
 use yfi_core::check::{check, check_with};
 use yfi_core::intern::intern;
 use yfi_core::link::link;
@@ -354,4 +358,69 @@ fn only_an_extended_reference_installs_keys_on_its_target() {
             "`{absent}` was installed on `Base` by a reference that must not contribute: {declared:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------- E0221 origin
+
+#[test]
+fn e0221_names_the_node_it_is_reported_against() {
+    // Two nodes failing against one shared mixin. The primary span is the
+    // effective value, which is the mixin's -- so the two findings share a
+    // location, and without a note naming the subject they print byte for byte
+    // identically and neither says which node to fix.
+    let fixture = open("check-shared-mixin");
+    let rendered = fixture.rendered();
+    assert_eq!(fixture.count(Code::DeclaredTagMismatch), 2, "{rendered}");
+    for name in ["shared/Bad", "shared/Also"] {
+        assert!(
+            rendered.contains(&format!("`{name}` is the node this is reported against")),
+            "each finding names its own subject:\n{rendered}"
+        );
+    }
+    let blocks: Vec<&str> = rendered.split("error[E0221]").skip(1).collect();
+    assert_eq!(blocks.len(), 2, "{rendered}");
+    assert_ne!(blocks[0], blocks[1], "two findings, two texts:\n{rendered}");
+}
+
+// ---------------------------------------------------------------- recovery
+
+#[test]
+fn nothing_read_off_a_recovered_view_is_reported_once_e0212_has_fired() {
+    // Recovery exists so the pass does not bail: every node keeps a defined
+    // view and the walk terminates. D1.8 is explicit that the recovered value
+    // is not a language semantic and is never emitted, so a finding read off it
+    // is a claim about a program that does not exist. `W0303` was the proof --
+    // it called this contribution inert because the base "already inherits" the
+    // key, through the edge the compiler had just invented, and its note
+    // pointed at the very line being contributed.
+    let fixture = open("cycle-recovered-view");
+    let rendered = fixture.rendered();
+    assert!(fixture.checked.is_cyclic(), "{rendered}");
+    assert_eq!(fixture.count(Code::CyclicInheritance), 1, "{rendered}");
+    assert_eq!(fixture.count(Code::InertContribution), 0, "{rendered}");
+    assert!(
+        !rendered.contains("already holds it through"),
+        "no note pointing at the line being contributed:\n{rendered}"
+    );
+}
+
+// ---------------------------------------------------------------- E0130
+
+#[test]
+fn an_alias_rejected_by_e0130_forms_no_inheritance_edge() {
+    // An operand the parser has already refused is not an operand. Accepting it
+    // anyway built the `is_a` edge, so a required field of the base was then
+    // reported unsatisfied -- `E0220` naming `xdoc/Base`, a base `E0130` had
+    // just said this node cannot name, and printed *above* it in position
+    // order. One fault, one code, and the cause is the only thing to fix.
+    let fixture = through(common::open("cross-document-extends"));
+    let rendered = fixture.rendered();
+    assert_eq!(fixture.count(Code::CrossDocumentAlias), 1, "{rendered}");
+    assert_eq!(fixture.count(Code::RequiredFieldUnsatisfied), 0, "{rendered}");
+    assert_eq!(fixture.count(Code::IllegalMergeSource), 0, "and not a second code:\n{rendered}");
+    let app = fixture.node("app.yfy", "App");
+    assert!(
+        fixture.checked.ancestors(&fixture.linked, app.0, app.1).is_empty(),
+        "the rejected alias is on no node's `is_a` axis:\n{rendered}"
+    );
 }

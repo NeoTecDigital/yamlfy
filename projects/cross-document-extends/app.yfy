@@ -1,0 +1,16 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: xdoc
+---
+Base: !type &Base
+  port: !!int
+---
+# `E0130`: anchors do not cross document boundaries, so `*Base` names nothing
+# the language will let this node inherit from. The operand is rejected rather
+# than accepted anyway -- accepting it built the `is_a` edge, and `E0220` then
+# blamed a base the compiler had just said could not be named, printing the
+# consequence above the cause.
+App: !node &App
+  extends: *Base

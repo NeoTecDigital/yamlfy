@@ -1,0 +1,17 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: recov
+---
+# `E0212`: `Base` extends `Patch` and `Patch` extends `!ref Base`. Recovery
+# drops a back edge so every node keeps a defined view -- but that view is not a
+# language semantic (D1.8) and nothing may be read off it. `W0303` used to be:
+# it called the contribution inert because the base "already inherits" `note`,
+# through the edge the compiler had just invented, and its note pointed at the
+# very line contributing it.
+Base: !node &Base
+  extends: Patch
+Patch: !node &Patch
+  extends: !ref Base
+  note: contributed

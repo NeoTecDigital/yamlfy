@@ -6,7 +6,10 @@
 //! Two questions, one model. **The epistemic gate** decides whether a reach is
 //! allowed at all: `E0216` for a path into a scope this one cannot see,
 //! `E0217` for a `!ref` — mutation intent — into a scope this one may not
-//! write. **Access** then decides, per member, whether a reader may see it —
+//! write. They are asked in that order and in *different passes*: `E0216`
+//! inside pass 4's path resolution, in front of the lookup, so that an
+//! invisible target resolves to nothing at all; `E0217` in pass 5, of a target
+//! that already resolved. **Access** then decides, per member, whether a reader may see it —
 //! and that depends on the *relationship* that brought the member into the node
 //! holding it, which is why `Acquisition` is asserted alongside `Visibility`
 //! throughout.
@@ -72,6 +75,49 @@ fn e0216_fires_on_a_path_into_a_scope_the_referencing_scope_cannot_see() {
             && rendered.contains("both axes compose over the whole path from the root"),
         "the note names the outermost gate that shut it out:\n{rendered}"
     );
+}
+
+#[test]
+fn an_invisible_target_answers_the_same_whether_the_member_exists_or_not() {
+    // The disclosure this closes: three probes at one private scope used to
+    // earn three distinguishable answers -- `E0216` naming the definition's
+    // file, line and column for a member that exists, `E0218` for one that does
+    // not, and `E0213` for a node that does not. Between them an outsider
+    // enumerates a private scope's node names and each node's member names,
+    // which is exactly the access D4.12 says it has none of.
+    let fixture = open("private-opacity");
+    let rendered = fixture.rendered();
+    assert_eq!(fixture.count(Code::RefNotVisible), 3, "{rendered}");
+    assert_eq!(fixture.count(Code::UnresolvedMember), 0, "a member miss is an oracle:\n{rendered}");
+    assert_eq!(fixture.count(Code::UnresolvedRef), 0, "so is a missing name:\n{rendered}");
+    for path in ["../vault/Secret.password", "../vault/Secret.nosuch", "../vault/NoSuchNode"] {
+        assert!(
+            rendered.contains(&format!("`{path}` names a definition this scope cannot see")),
+            "one shape for all three, differing only in what the author wrote:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("hidden.yfy"),
+        "and no location inside the scope the reader may not see:\n{rendered}"
+    );
+}
+
+#[test]
+fn the_visibility_gate_stands_in_front_of_member_resolution() {
+    // Ordering, not wording: an invisible target must resolve to *nothing*, so
+    // nothing downstream -- member addressing, an `is_a` edge, a required-field
+    // check against the base -- ever runs against a node the reader may not
+    // have. A gate that only decorates the diagnostic is not a gate.
+    let fixture = open("private-opacity");
+    let probe = fixture.file("outside/probe.yfy");
+    let resolved: Vec<bool> = fixture
+        .linked
+        .references()
+        .iter()
+        .filter(|held| held.file == probe)
+        .map(|held| held.target.is_some())
+        .collect();
+    assert_eq!(resolved, [false, false, false], "{}", fixture.rendered());
 }
 
 #[test]

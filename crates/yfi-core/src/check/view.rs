@@ -37,7 +37,8 @@
 //!
 //! If B is private and outside A's scope, A has no access to B **at all** — not
 //! its public surface, not its name. That is not decided here: it is decided
-//! where the reach is written, by `E0241` for an import and by `E0216` for a
+//! where the reach is written, by `E0241` for an import and by `E0216` (pass 4,
+//! in front of path resolution) for a
 //! `!ref` ([`super::reach`]). A private B in A's *own* scope is entirely
 //! ordinary; privacy is a boundary against the outside, not secrecy from
 //! siblings.

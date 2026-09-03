@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: vis::shut
+visibility: private
+# A private scope may relate a node it can see. An observer outside it sees
+# `Alpha` and may not see what this scope says about it, so the relation is
+# absent from `incident_edges_visible_from` while `Alpha` itself is not.
+--- !edge &Private
+pub connections: [../open/Alpha]

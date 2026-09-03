@@ -160,6 +160,12 @@ pub enum Failure {
     NotAPath,
     /// A `!ref` binding whose own path resolves back through itself.
     BindingCycle,
+    /// The walk landed in a scope the referencing scope cannot see. The fields
+    /// are the outermost scope that shut the observer out and the observer
+    /// itself, both as qualified directory names — never a file, a line or a
+    /// column, because a position inside a scope the reader may not see is
+    /// itself the disclosure.
+    NotVisible(Box<str>, Box<str>),
 }
 
 /// The shape of the project a path walks: which directories hold which
@@ -215,6 +221,18 @@ enum Landing {
 ///
 /// Members are applied here too, because a member is addressing within
 /// whatever the segments named and needs the same arena walk.
+///
+/// # The gate stands in front of the lookup
+///
+/// Visibility is asked of the place the walk landed **before** the final
+/// segment is sought there and before any `.` member is addressed. D4.12 gives
+/// an outsider no access to a private definition *at all* — not its members,
+/// not its public surface, not its name — and a lookup performed first is an
+/// oracle whatever the diagnostic says afterwards: a member that exists, a
+/// member that does not and a name that does not would each earn a
+/// distinguishable answer, and between them an outsider enumerates the scope.
+/// So an invisible landing resolves to **nothing**, with one shape of answer
+/// that differs only in the path the author wrote.
 pub(crate) fn resolve(
     ctx: &Ctx,
     space: &Space,
@@ -223,6 +241,7 @@ pub(crate) fn resolve(
     path: &Path,
 ) -> Result<(FileId, NodeId), Failure> {
     let landing = walk(ctx, space, origin, path)?;
+    visible(ctx, origin, &landing)?;
     let name = path.segments.last().expect("a path has at least one segment");
     let found = match landing {
         Landing::File(file) => table.in_file(file, name),
@@ -231,6 +250,34 @@ pub(crate) fn resolve(
     let base =
         found.ok_or_else(|| Failure::NoDefinition(name.clone(), where_it_landed(ctx, &landing)))?;
     members(ctx, base, &path.members)
+}
+
+/// Whether the scope a walk landed in is visible to the file that wrote the
+/// path, composed over the whole `root → landing` path (D6.5).
+///
+/// Every scope that can be a blocker lies strictly between the root — which
+/// encloses every observer and therefore never blocks — and the landing, so it
+/// is a directory the author named in the path or an ancestor of one. Naming it
+/// discloses nothing the author did not already write.
+fn visible(ctx: &Ctx, origin: FileId, landing: &Landing) -> Result<(), Failure> {
+    let Some(observer) = ctx.project.file(origin).map(|held| held.scope) else {
+        return Ok(());
+    };
+    let target = match landing {
+        Landing::Scope(scope) => *scope,
+        Landing::File(file) => match ctx.project.file(*file) {
+            Some(held) => held.scope,
+            None => return Ok(()),
+        },
+    };
+    let scopes = ctx.project.scopes();
+    match scopes.blocked_by(target, observer) {
+        Some(blocker) => Err(Failure::NotVisible(
+            scopes.qualified(blocker).into(),
+            scopes.qualified(observer).into(),
+        )),
+        None => Ok(()),
+    }
 }
 
 /// How the place a walk landed is named back to the author.

@@ -24,6 +24,12 @@
 //! been reported once, and a second code about the same token would send the
 //! author looking for a second fault.
 //!
+//! An alias the parse already refused — `E0130`, an anchor of an earlier
+//! document — is dropped here without a second diagnostic. The binding the
+//! parser recorded is real enough to index with and the language still says the
+//! node cannot name it, so keeping the operand would put a base on the node's
+//! `is_a` axis that nothing else in the compiler agrees exists.
+//!
 //! An `extends` entry whose operand is illegal is reported, never
 //! reinterpreted. Treating it as an ordinary field instead would let a mistake
 //! in the value silently decide whether the key is an operation, producing a
@@ -186,6 +192,18 @@ fn through_alias(
     // An alias that bound to nothing is already `E0100` or `E0130` from the
     // parse. Reporting it again as an illegal source would name a second fault
     // that does not exist.
+    //
+    // A cross-document alias is refused as well as unreported. The parser still
+    // records the binding it found, so accepting it here built the `is_a` edge
+    // and every rule downstream then answered against an ancestry the language
+    // had already said does not exist: `extends: *Base` across a document
+    // boundary earned `E0130` and then a required field of the base reported
+    // unsatisfied -- the consequence printed above the cause, blaming a base
+    // the compiler had just refused to let the node name. An operand the parse
+    // rejected is not an operand.
+    if ast.alias(node).is_some_and(|held| held.cross_document) {
+        return None;
+    }
     let target = ast.alias_binding(node)?;
     accept(ctx, kind, node, span, OperandForm::Alias, target, diagnostics)
 }

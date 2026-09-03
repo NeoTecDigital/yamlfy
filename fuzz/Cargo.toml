@@ -29,5 +29,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "parse_yfy"
+path = "fuzz_targets/parse_yfy.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1

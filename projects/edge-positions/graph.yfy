@@ -1,0 +1,76 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::positions
+visibility: public
+--- !node &Alpha
+pub port: 1
+--- !node &Gamma
+pub port: 3
+# One endpoint that names nothing. It costs one `E0213` and nothing else: the
+# three positions are the three the sequence **writes**, so `third` names
+# `Gamma` and `second` names the gap rather than being quietly handed `Gamma`.
+--- !edge &Gapped
+pub connections: [Alpha, Nope, Gamma]
+pub definition:
+  first: 0
+  second: 1
+  third: 2
+# An endpoint written inline is a node like any other; it simply has no name
+# to be addressed by.
+--- !edge &Inline
+pub connections: [Alpha, {host: localhost}]
+pub definition:
+  named: 0
+  anonymous: 1
+# `E0225` three times. A position is a whole number written plainly, and the
+# three spellings below are the three ways of almost writing one.
+--- !edge &Spelling
+pub connections: [Alpha]
+pub definition:
+  padded: " 0 "
+  signed: "+0"
+  leading: "00"
+# `E0225`. A handle may not take one of the two names the language owns.
+--- !edge &Shadowing
+pub connections: [Alpha]
+pub definition:
+  connections: 0
+# A family fixing two handles once...
+--- !type &Pairwise
+pub connections: [Alpha, Gamma]
+pub definition:
+  source: 0
+  target: 1
+# ...and an edge that narrows the sequence. `E0225` for `target`, reported
+# about **this** node: the `definition` line it is written on is correct for
+# every edge of the family that reads the sequence whole.
+--- !edge &Narrowed
+extends: Pairwise
+pub connections: [Alpha]
+# `E0223`. The declaration is inherited and nothing supplied it: the member is
+# there and relates nothing, which is the failure writing no member at all is,
+# with the same fix. It is not a *shape* fault, and `E0224` would send the
+# author looking for a sequence they never wrote.
+--- !type &Declares
+pub connections:
+--- !edge &Unsupplied
+extends: Declares
+# `E0224`, and then nothing. A member the language owns that holds the wrong
+# shape has been reported once; reading the operand as an ordinary member
+# naming a node afterwards would put in the image the relationship the
+# compiler had just refused. A handle's value is a position for the same
+# reason: it indexes a sequence and never names a node.
+--- !edge &Misshapen
+pub connections: ./Alpha
+--- !edge &Mislabelled
+pub connections: [Alpha]
+pub definition:
+  owner: ./Alpha
+# `Alpha` is an endpoint, a base and the target of a data member, so the
+# reverse index has to say which of those is a relation.
+--- !node &Derived
+extends: Alpha
+--- !node &Points
+pub at: ./Alpha

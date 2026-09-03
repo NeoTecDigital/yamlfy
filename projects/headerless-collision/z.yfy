@@ -1,0 +1,5 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !node &Use
+extends: ./Widget
+alpha: !!int 9

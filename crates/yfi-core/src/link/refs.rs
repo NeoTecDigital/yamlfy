@@ -14,7 +14,7 @@
 //! | position | read as a path when |
 //! |---|---|
 //! | operand of `<<:` or `extends:` | it parses as a path at all |
-//! | item of an `!edge`'s `connections` | always: it is a reach or it is `E0213` |
+//! | item of a `connections` an `!edge` reads | always: it is a reach or it is `E0213` |
 //! | anywhere else (a data edge) | it parses **and** was written `./…` or `../…` |
 //!
 //! The asymmetry is exact rather than a matter of taste. A scalar under `<<:`
@@ -45,16 +45,27 @@
 //! `!ref` establishes the capability that member access addresses through.
 //!
 //! A `connections` item is the third row because the position is declared by
-//! the language on a node the language tagged, which is as explicit a signal as
-//! `extends:` is and nothing like the incidental one D6.6 refuses. There is no
-//! prefix in that position, so quoting escapes nothing there and a quoted
-//! endpoint still names a node.
+//! the language, which is as explicit a signal as `extends:` is and nothing
+//! like the incidental one D6.6 refuses. There is no prefix in that position,
+//! so quoting escapes nothing there and a quoted endpoint still names a node.
+//!
+//! # Which `connections` that is, and why the pass runs twice
+//!
+//! The third row is not "a member called `connections`", which would reserve
+//! the name on every node in the language, and not "a member of an `!edge`"
+//! either, because an edge inherits the member from bases carrying no tag that
+//! says so. It is the set [`crate::edge::endpoint_holders`] names, derived from
+//! the inheritance clauses — and a clause operand may itself be a path this
+//! pass resolves, so the pass runs twice. [`probe`] resolves everything with no
+//! `connections` item read as a reach and reports nothing; `link` builds the
+//! clauses from it and calls [`resolve`] with the answer. No operand's meaning
+//! depends on the set, so only the third row moves between the two runs.
 //!
 //! In a base YAML file `!ref` is an unrecognised tag on a value and nothing
 //! else (D6.6), so pass 3 classifies it as [`TagKind::Other`] there and this
 //! pass never sees it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, NodeId, ScalarStyle, Span};
 
@@ -73,7 +84,7 @@ pub enum RefRole {
     Inclusion,
     /// `extends:` — extension, or an extended reference when written `!ref`.
     Extension,
-    /// An item of an `!edge` node's `connections` sequence — an endpoint of
+    /// An item of a `connections` sequence some `!edge` reads — an endpoint of
     /// that edge (D4.13). A reach position by declaration, exactly as a clause
     /// operand is, so a bare name is a path there and quoting escapes nothing:
     /// there is no prefix in this position for a quote to escape.
@@ -175,13 +186,18 @@ struct Pass<'a> {
 /// Resolve every path reference in the project, reporting `E0213` for each that
 /// names nothing and `E0218` for each that names a member its target does not
 /// hold.
+///
+/// `endpoints` is the set of nodes whose `connections` some `!edge` reads; a
+/// sequence item under that member is a reach on those nodes and an ordinary
+/// value everywhere else.
 pub(crate) fn resolve(
     ctx: &Ctx,
     table: &Table,
     space: &Space,
+    endpoints: &HashSet<(FileId, NodeId)>,
     diagnostics: &mut Diagnostics,
 ) -> References {
-    let occurrences = collect(ctx);
+    let occurrences = collect(ctx, endpoints);
     let mut pass = Pass {
         ctx,
         space,
@@ -213,6 +229,18 @@ pub(crate) fn resolve(
         });
     }
     refs
+}
+
+/// The first of the pass's two runs: every reference resolved with no
+/// `connections` item read as a reach, and nothing reported.
+///
+/// Its only consumer is the clause collection `link` derives the endpoint
+/// holders from. Every clause operand resolves here exactly as it does in
+/// [`resolve`], so the two runs produce the same clauses and only the second
+/// raises the diagnostics.
+pub(crate) fn probe(ctx: &Ctx, table: &Table, space: &Space) -> References {
+    let mut discarded = Diagnostics::new();
+    resolve(ctx, table, space, &HashSet::new(), &mut discarded)
 }
 
 /// The `!ref` bindings of each document, keyed by the name they bind. A name
@@ -270,7 +298,7 @@ impl Pass<'_> {
 }
 
 /// Every position in the project that holds a path.
-fn collect(ctx: &Ctx) -> Vec<Occurrence> {
+fn collect(ctx: &Ctx, endpoints: &HashSet<(FileId, NodeId)>) -> Vec<Occurrence> {
     let mut out = Vec::new();
     for file in ctx.project.files() {
         if !ctx.is_source(file.id) {
@@ -283,7 +311,8 @@ fn collect(ctx: &Ctx) -> Vec<Occurrence> {
             if document.is_some() && document == header {
                 continue;
             }
-            if let Some(found) = one(ctx, file.id, node, document.unwrap_or_default()) {
+            let document = document.unwrap_or_default();
+            if let Some(found) = one(ctx, endpoints, file.id, node, document) {
                 out.push(found);
             }
         }
@@ -292,12 +321,18 @@ fn collect(ctx: &Ctx) -> Vec<Occurrence> {
 }
 
 /// Read `node` as a path occurrence, or `None` if it is not one.
-fn one(ctx: &Ctx, file: FileId, node: NodeId, document: u32) -> Option<Occurrence> {
+fn one(
+    ctx: &Ctx,
+    endpoints: &HashSet<(FileId, NodeId)>,
+    file: FileId,
+    node: NodeId,
+    document: u32,
+) -> Option<Occurrence> {
     let ast = ctx.ast(file)?;
     let capability = ctx.interned.tag_kind(file, node) == Some(TagKind::Ref);
     let scalar = ast.scalar(node)?;
     let plain = scalar.style == ScalarStyle::Plain && ast.tag(node).is_none();
-    let Site { role, binds, owner } = site(ctx, file, node)?;
+    let Site { role, binds, owner } = site(ctx, endpoints, file, node)?;
     // Two positions are reaches by declaration rather than by spelling: a
     // `!ref`, and an item of an edge's `connections`. In both the scalar names
     // a node whatever its style, and a scalar that is not a path at all is
@@ -331,7 +366,12 @@ struct Site {
 /// The operand may be written directly or as an element of the flat sequence
 /// form, so one level of sequence is stepped through before the entry is found.
 /// A mapping **key** is never a path: it names a field.
-fn site(ctx: &Ctx, file: FileId, node: NodeId) -> Option<Site> {
+fn site(
+    ctx: &Ctx,
+    endpoints: &HashSet<(FileId, NodeId)>,
+    file: FileId,
+    node: NodeId,
+) -> Option<Site> {
     let loose = Site { role: RefRole::Data, binds: None, owner: None };
     let ast = ctx.ast(file)?;
     let Some(parent) = ctx.interned.parent_of(file, node) else { return Some(loose) };
@@ -348,28 +388,45 @@ fn site(ctx: &Ctx, file: FileId, node: NodeId) -> Option<Site> {
     if is_extends_key(ast, entry.key) {
         return Some(Site { role: RefRole::Extension, binds: None, owner });
     }
-    if !direct && is_connections_key(ctx, file, holder, entry.key) {
+    if !direct && is_connections_key(ctx, endpoints, file, holder, entry.key) {
         return Some(Site { role: RefRole::Connection, binds: None, owner });
     }
     let binds = direct.then(|| ast.scalar(entry.key).map(|key| key.value.clone())).flatten();
     Some(Site { role: RefRole::Data, binds, owner })
 }
 
-/// Whether `key` names the `connections` member of an `!edge` node (D4.13).
+/// Whether `key` names a `connections` member some `!edge` reads (D4.13).
+///
+/// The holder is the edge itself or a node it inherits the member from, which
+/// is [`crate::edge::endpoint_holders`]' answer and not a tag test: an untagged
+/// mixin's `connections` is an edge's endpoints, and a `!type` no edge extends
+/// holds an ordinary member of that name.
 ///
 /// Only the sequence form is a reach position, which is why the caller asks
 /// this for a sequence item alone: a `connections` that is not a sequence is
-/// the wrong shape for an edge and is reported once, as `E0224`, rather than
-/// twice as a shape fault and a failed path.
-fn is_connections_key(ctx: &Ctx, file: FileId, holder: NodeId, key: NodeId) -> bool {
-    edge::declares_connections(ctx.interned, file, holder)
+/// reported once, as `E0224`, and not twice as a shape fault and a failed
+/// path.
+fn is_connections_key(
+    ctx: &Ctx,
+    endpoints: &HashSet<(FileId, NodeId)>,
+    file: FileId,
+    holder: NodeId,
+    key: NodeId,
+) -> bool {
+    let reads = edge::is_edge(ctx.interned, file, holder) || endpoints.contains(&(file, holder));
+    reads
         && ctx.interned.key_of(file, key).and_then(|name| ctx.interned.symbols().resolve(name))
             == Some(edge::CONNECTIONS)
 }
 
 /// The diagnostic a failed resolution earns. Every failure is `E0213` — the
-/// path named nothing — except a member miss, which is `E0218`: the path landed
-/// and the member did not, and the two have different fixes.
+/// path named nothing — except a member miss, which is `E0218` (the path landed
+/// and the member did not, and the two have different fixes), and a landing the
+/// referencing scope cannot see, which is `E0216`.
+///
+/// `E0216`'s note carries **no span**. Every other note here points at
+/// something the author can read; that one would point inside the scope the
+/// gate just refused, which is the disclosure the gate exists to prevent.
 fn failed(held: &Occurrence, failure: &Failure) -> Diagnostic {
     let (code, message, note) = explain(&held.text, failure);
     Diagnostic::new(code, held.span, message).with_note(note, None)
@@ -418,6 +475,17 @@ fn explain(text: &str, failure: &Failure) -> (Code, String, String) {
             "a path is written `../dir/Name`, `peer/Name`, `Name` or `Name.member`; `!ref` takes \
              one and nothing else"
                 .to_owned(),
+        ),
+        Failure::NotVisible(blocker, observer) => (
+            Code::RefNotVisible,
+            format!(
+                "`{text}` names a definition this scope cannot see; the path grants the reach, \
+                 and `private` decides that you may not have it"
+            ),
+            format!(
+                "`{blocker}` is `private` and `{observer}` is outside it; both axes compose \
+                 over the whole path from the root"
+            ),
         ),
         Failure::NoMember(name) => (
             Code::UnresolvedMember,

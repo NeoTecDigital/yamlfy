@@ -1,0 +1,16 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: shadow::app
+---
+# `child`'s `extends: Widget` was written against this file's own `&Widget`.
+# Adding the binding below outranks it, so one unmodified line silently starts
+# naming another directory's node -- and with matching keys there is no signal
+# at all. The binding is diagnosed rather than allowed to retarget it.
+Widget: !type &Widget
+  near: !!int 1
+Use: !node &Use
+  Widget: !ref ../other/Widget
+  child: !node
+    extends: Widget

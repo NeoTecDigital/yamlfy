@@ -267,9 +267,9 @@ impl ScopeTree {
     ///
     /// The exact analogue of [`ScopeTree::blocked_by`], and deliberately the
     /// same walk: an extended reference is a **write performed at compile
-    /// time**, so it asks the mutability axis the question `E0216` asks the
-    /// visibility axis, and the two must never be able to disagree about who
-    /// blocked what. Outermost for the same reason — opening any scope below
+    /// time**, so it asks the mutability axis the question the visibility gate
+    /// (`E0216`, raised in pass 4 ahead of resolution) asks the visibility
+    /// axis, and the two must never be able to disagree about who blocked what. Outermost for the same reason — opening any scope below
     /// the outermost gate changes nothing.
     #[must_use]
     pub fn not_writable_by(&self, target: ScopeId, observer: ScopeId) -> Option<ScopeId> {

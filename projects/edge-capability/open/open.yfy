@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: cap::open
+visibility: public
+--- !node &Free
+pub port: 1
+# `!ref` in a connections item is the same declaration of intent it is
+# anywhere else: this edge relates the endpoint **and** declares that it means
+# to modify it. `E0217` — a scope that says nothing is immutable.
+--- !edge &Governs
+pub connections: [!ref ../locked/Locked, Free]

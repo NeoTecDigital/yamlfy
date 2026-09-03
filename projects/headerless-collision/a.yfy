@@ -1,0 +1,8 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+# No header, so this directory claims no namespace and these definitions carry
+# no canonical path. They are still addressable by directory (D4.12), so two
+# files defining one name in one directory is still `E0230`: renaming a file
+# would otherwise decide which one `./Widget` names.
+--- !type &Widget
+alpha: !!int 1

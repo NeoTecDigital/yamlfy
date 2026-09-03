@@ -17,30 +17,44 @@
 //! knows what each item names, but only pass 5 knows which `connections` a node
 //! ends up holding, and reporting `E0223` against `own(A)` would fire on every
 //! concrete edge of a family that declares its endpoints once in the base.
+//!
+//! # A position is what is written, not what survived
+//!
+//! An item that named nothing is `E0213` and holds no endpoint, and the items
+//! beside it **do not renumber**: `connections` writes three positions whether
+//! or not all three resolve. A handle is checked against the count the sequence
+//! writes and is matched to an endpoint by that written position, so one bad
+//! item costs exactly one diagnostic and moves no handle.
 
 use std::collections::HashMap;
 
-use yfi_syntax::{Ast, Code, Diagnostic, Diagnostics, FileId, NodeId, Span};
+use yfi_syntax::{Ast, Code, Diagnostic, Diagnostics, NodeId, ScalarStyle, Span};
 
-use crate::edge::{is_edge, CONNECTIONS, DEFINITION};
+use crate::edge::{self, is_edge, CONNECTIONS, DEFINITION};
 use crate::link::{Ctx, Linked, RefRole};
 use crate::symbol::Symbol;
+use crate::tags::TagKind;
 
-use super::names::span_of;
+use super::names::{display, span_of};
 use super::resolve::Views;
-use super::view::Place;
+use super::view::{Field, Place};
 
 /// One endpoint of one edge, in written order.
 #[derive(Clone, Copy, Debug)]
 pub struct Connection {
     /// Its position in `connections`, which is what a handle names and what
     /// never renumbers: filtering an endpoint an observer cannot see removes it
-    /// from a result, and does not move the ones beside it.
+    /// from a result, and an endpoint that resolved to nothing leaves a gap,
+    /// and neither moves the ones beside it.
     pub index: u32,
     /// The item node that named it, in the file that wrote the sequence.
     pub item: Place,
     /// The node it names.
     pub target: Place,
+    /// Whether the item was written `!ref` — the same declaration of intent it
+    /// is anywhere else (D4.3), checked as `E0217` and recorded here so the
+    /// image can answer *which endpoints does this edge intend to modify*.
+    pub capability: bool,
     /// The handle `definition` gives this position, if it gives it one.
     pub handle: Option<Symbol>,
     /// Where the item is written.
@@ -65,10 +79,25 @@ pub struct EdgeNode {
     /// and `to: 0` over a single endpoint. Recording the handle on the position
     /// it names lets only the last one survive, which silently loses `from`.
     pub handles: Vec<(Symbol, u32)>,
+    /// Where the resolved view sites `connections`, whatever shape it turned
+    /// out to have, and `definition` likewise. Emission reads them to keep the
+    /// language's own members out of the **data** edges: a handle's value is a
+    /// position rather than a reference, and a `connections` of the wrong shape
+    /// has been reported once already and must not be reported again as a
+    /// member that names a node.
+    pub connections_value: Option<Place>,
+    /// Where the resolved view sites `definition`. See
+    /// [`EdgeNode::connections_value`].
+    pub definition_value: Option<Place>,
 }
 
 impl EdgeNode {
     /// The endpoint a handle names, if it names one.
+    ///
+    /// Matched by **written position**, which is what the handle was checked
+    /// against. A handle naming a position whose item resolved to nothing binds
+    /// to no endpoint and answers `None`, and the endpoint after it keeps the
+    /// name it was given.
     #[must_use]
     pub fn connection(&self, handle: Symbol) -> Option<&Connection> {
         let (_, index) = self.handles.iter().find(|(name, _)| *name == handle)?;
@@ -120,7 +149,7 @@ pub(crate) fn collect(
     let targets = resolved_items(linked);
     let mut edges = Edges::default();
     for place in order.iter().filter(|held| is_edge(ctx.interned, held.0, held.1)) {
-        let held = one(ctx, views, &targets, *place, diagnostics);
+        let held = one(ctx, linked, views, &targets, *place, diagnostics);
         edges.index.insert(*place, edges.items.len());
         edges.items.push(held);
     }
@@ -142,48 +171,73 @@ fn resolved_items(linked: &Linked) -> HashMap<Place, Place> {
 /// Read one edge node.
 fn one(
     ctx: &Ctx,
+    linked: &Linked,
     views: &Views,
     targets: &HashMap<Place, Place>,
     place: Place,
     diagnostics: &mut Diagnostics,
 ) -> EdgeNode {
-    let Some(items) = connection_items(ctx, views, place, diagnostics) else {
-        return EdgeNode { place, connections: Vec::new(), handles: Vec::new() };
+    let sequence = member(ctx, views, place, CONNECTIONS);
+    let definition = member(ctx, views, place, DEFINITION);
+    let mut held = EdgeNode {
+        place,
+        connections: Vec::new(),
+        handles: Vec::new(),
+        connections_value: sequence.map(|field| field.value),
+        definition_value: definition.map(|field| field.value),
     };
-    let mut connections = endpoints(ctx, targets, items);
-    let handles = handles(ctx, views, place, connections.len(), diagnostics);
-    // The **first** handle naming a position labels the edge record for it, so
-    // the index carries a stable name. The rest are not lost: every handle is
-    // kept on the edge, because the mapping is many-to-one and a self-loop
-    // names one position twice on purpose.
-    for (name, index) in &handles {
-        if let Some(held) = connections.get_mut(*index as usize) {
-            if held.handle.is_none() {
-                held.handle = Some(*name);
-            }
-        }
+    let Some(items) = connection_items(ctx, sequence, place, diagnostics) else { return held };
+    // The bound a handle is checked against is what `connections` **writes**,
+    // not what resolved: an item naming nothing costs its own `E0213` and must
+    // not also make the position after it unnameable.
+    let written = items.len();
+    held.connections = endpoints(ctx, targets, items);
+    held.handles = handles(ctx, linked, place, definition, written, diagnostics);
+    for (name, index) in &held.handles {
+        label(&mut held.connections, *name, *index);
     }
-    EdgeNode { place, connections, handles }
+    held
+}
+
+/// One of the two members the language owns, off the node's resolved view.
+fn member<'a>(ctx: &Ctx, views: &'a Views, place: Place, name: &str) -> Option<&'a Field> {
+    let name = ctx.interned.symbols().get(name)?;
+    views.resolved(place)?.get(name)
+}
+
+/// The **first** handle naming a position labels the edge record for it, so the
+/// index carries a stable name. The rest are not lost: every handle is kept on
+/// the edge, because the mapping is many-to-one and a self-loop names one
+/// position twice on purpose.
+fn label(connections: &mut [Connection], name: Symbol, index: u32) {
+    let Some(held) = connections.iter_mut().find(|held| held.index == index) else { return };
+    if held.handle.is_none() {
+        held.handle = Some(name);
+    }
 }
 
 /// The items of an edge's `connections`, or `None` when it has none to read.
 ///
-/// `E0223` when the resolved view holds no such member — the tag then relates
-/// nothing, and a tag that means nothing is the failure this decision exists to
-/// remove. `E0224` when it holds one that is not a sequence.
+/// `E0223` when the resolved view holds no such member, and when it holds one
+/// that is an **unsatisfied declaration** — `pub connections:` in a base, never
+/// supplied. Both relate nothing, which is the failure this decision exists to
+/// remove, and both have the same fix: write the endpoints. `E0224` is for a
+/// member that holds a value of the wrong *shape*, which is a different fix.
 fn connection_items(
     ctx: &Ctx,
-    views: &Views,
+    field: Option<&Field>,
     place: Place,
     diagnostics: &mut Diagnostics,
-) -> Option<Vec<(FileId, NodeId)>> {
-    let name = ctx.interned.symbols().get(CONNECTIONS);
-    let field = name.and_then(|name| views.resolved(place)?.get(name));
+) -> Option<Vec<Place>> {
     let Some(field) = field else {
-        diagnostics.push(missing(ctx, place));
+        diagnostics.push(missing(ctx, place, None));
         return None;
     };
     let ast = ctx.ast(field.value.0)?;
+    if is_unsupplied(ast, field.value.1) {
+        diagnostics.push(missing(ctx, place, Some(field.key)));
+        return None;
+    }
     let Some(items) = ast.items(field.value.1) else {
         diagnostics.push(shape(ctx, CONNECTIONS, "a sequence", field.value));
         return None;
@@ -191,14 +245,25 @@ fn connection_items(
     Some(items.iter().map(|item| (field.value.0, *item)).collect())
 }
 
+/// Whether a member's value is the **empty node** a declaration leaves behind:
+/// `pub connections:` in a base, with nothing after it.
+///
+/// Two spellings reach here for one thing — a tagged empty declaration parses
+/// to an empty scalar, a bare one to the plain null YAML resolves it to — and
+/// every plain spelling of null is the same statement. None of them is a
+/// sequence, and none of them is the *shape* fault `E0224` reports: the member
+/// was declared and never supplied, which is what `E0223` is for.
+fn is_unsupplied(ast: &Ast, value: NodeId) -> bool {
+    ast.scalar(value).is_some_and(|held| {
+        held.style == ScalarStyle::Plain
+            && matches!(&*held.value, "" | "~" | "null" | "Null" | "NULL")
+    })
+}
+
 /// Pair each item with the node it names, keeping written order and the
 /// position each item holds. An item that named nothing keeps its position:
 /// renumbering the endpoints after it would silently move every handle.
-fn endpoints(
-    ctx: &Ctx,
-    targets: &HashMap<Place, Place>,
-    items: Vec<(FileId, NodeId)>,
-) -> Vec<Connection> {
+fn endpoints(ctx: &Ctx, targets: &HashMap<Place, Place>, items: Vec<Place>) -> Vec<Connection> {
     items
         .into_iter()
         .enumerate()
@@ -208,6 +273,7 @@ fn endpoints(
                 index: u32::try_from(at).ok()?,
                 item,
                 target,
+                capability: ctx.interned.tag_kind(item.0, item.1) == Some(TagKind::Ref),
                 handle: None,
                 span: ctx.ast(item.0)?.node(item.1).span,
             })
@@ -230,52 +296,97 @@ fn named(ctx: &Ctx, targets: &HashMap<Place, Place>, item: Place) -> Option<Plac
 }
 
 /// The handles `definition` declares, each checked against the number of
-/// endpoints there are to name.
+/// positions `connections` writes.
 fn handles(
     ctx: &Ctx,
-    views: &Views,
-    place: Place,
+    linked: &Linked,
+    subject: Place,
+    field: Option<&Field>,
     count: usize,
     diagnostics: &mut Diagnostics,
 ) -> Vec<(Symbol, u32)> {
-    let name = ctx.interned.symbols().get(DEFINITION);
-    let Some(field) = name.and_then(|name| views.resolved(place)?.get(name)) else {
-        return Vec::new();
-    };
+    let Some(field) = field else { return Vec::new() };
     let Some(ast) = ctx.ast(field.value.0) else { return Vec::new() };
     let Some(entries) = ast.entries(field.value.1) else {
         diagnostics.push(shape(ctx, DEFINITION, "a mapping", field.value));
         return Vec::new();
     };
+    let origin = (field.origin != subject).then_some(field.origin);
     let mut out = Vec::new();
     for entry in entries {
         let Some(name) = ctx.interned.key_of(field.value.0, entry.key) else { continue };
-        match position(ast, entry.value, count) {
-            Some(index) => out.push((name, index)),
-            None => diagnostics.push(unbound(ctx, (field.value.0, entry.value), count)),
+        let text = ctx.interned.symbols().resolve(name).unwrap_or_default();
+        let at = (field.value.0, entry.value);
+        let held = Unbound { subject, at, name: text, count, origin };
+        match handle(ast, text, entry.value, count) {
+            Ok(index) => out.push((name, index)),
+            Err(why) => diagnostics.push(unbound(ctx, linked, &held, why)),
         }
     }
     out
 }
 
-/// A handle's value read as a position in `connections`.
-fn position(ast: &Ast, node: NodeId, count: usize) -> Option<u32> {
-    let index: u32 = ast.scalar(node)?.value.trim().parse().ok()?;
-    (index as usize).lt(&count).then_some(index)
+/// Why one handle names no position.
+#[derive(Clone, Copy)]
+enum Rejection {
+    /// It takes one of the two names the language owns on an edge.
+    Reserved,
+    /// Its value is not a position at all.
+    NotAnIndex,
+    /// Its value is a position the sequence does not write.
+    OutOfRange(u32),
+}
+
+/// One handle's value read as a position in `connections`, or why it is not
+/// one.
+fn handle(ast: &Ast, name: &str, value: NodeId, count: usize) -> Result<u32, Rejection> {
+    if edge::is_reserved_member(name) {
+        return Err(Rejection::Reserved);
+    }
+    let text = ast.scalar(value).ok_or(Rejection::NotAnIndex)?;
+    let index = index_of(&text.value).ok_or(Rejection::NotAnIndex)?;
+    match (index as usize) < count {
+        true => Ok(index),
+        false => Err(Rejection::OutOfRange(index)),
+    }
+}
+
+/// A position, written the one way a position is written: decimal digits, no
+/// sign, no padding and no surrounding space.
+///
+/// `" 0 "`, `"+0"` and `"00"` are rejected. Accepting them would give one
+/// position several spellings and buy nothing: a handle's value is written by
+/// the author beside the sequence it indexes, and there is no format to be
+/// lenient about.
+fn index_of(text: &str) -> Option<u32> {
+    let canonical = !text.is_empty()
+        && text.bytes().all(|held| held.is_ascii_digit())
+        && (text.len() == 1 || !text.starts_with('0'));
+    if !canonical {
+        return None;
+    }
+    text.parse().ok()
 }
 
 /// `E0223` — an `!edge` that relates nothing.
-fn missing(ctx: &Ctx, place: Place) -> Diagnostic {
-    Diagnostic::new(
-        Code::EdgeWithoutConnections,
-        span_of(ctx, place),
-        "an `!edge` holds no `connections`, so the tag relates nothing",
-    )
-    .with_note(
-        "`connections` is a sequence of the nodes the edge connects, and is what makes the node \
-         an edge; an edge that relates nothing yet writes `connections: []`",
-        None,
-    )
+fn missing(ctx: &Ctx, place: Place, declared: Option<Place>) -> Diagnostic {
+    let message = match declared {
+        Some(_) => {
+            "an `!edge`'s `connections` is a declaration nothing supplied, so the tag \
+                    relates nothing"
+        }
+        None => "an `!edge` holds no `connections`, so the tag relates nothing",
+    };
+    let held = Diagnostic::new(Code::EdgeWithoutConnections, span_of(ctx, place), message)
+        .with_note(
+            "`connections` is a sequence of the nodes the edge connects, and is what makes the \
+             node an edge; an edge that relates nothing yet writes `connections: []`",
+            None,
+        );
+    match declared {
+        Some(key) => held.with_note("declared here, and left empty", Some(span_of(ctx, key))),
+        None => held,
+    }
 }
 
 /// `E0224` — one of the two members the language owns has the wrong shape.
@@ -292,19 +403,59 @@ fn shape(ctx: &Ctx, member: &str, wanted: &str, at: Place) -> Diagnostic {
     )
 }
 
+/// One rejected handle, and everything its diagnostic has to name.
+struct Unbound<'a> {
+    subject: Place,
+    at: Place,
+    name: &'a str,
+    count: usize,
+    origin: Option<Place>,
+}
+
 /// `E0225` — a handle naming no endpoint.
-fn unbound(ctx: &Ctx, at: Place, count: usize) -> Diagnostic {
-    Diagnostic::new(
+///
+/// The message names its **subject**, and an inherited `definition` earns a
+/// note naming where it came from, exactly as `E0221` does. Without both, a
+/// family that declares two handles and three edges that each narrow
+/// `connections` produce three byte-identical errors on the base's line — a
+/// line that is correct for every node that reads it whole.
+fn unbound(ctx: &Ctx, linked: &Linked, held: &Unbound, why: Rejection) -> Diagnostic {
+    let subject = display(ctx, linked, held.subject);
+    let out = Diagnostic::new(
         Code::UnboundHandle,
-        span_of(ctx, at),
-        format!(
-            "a `definition` handle names no connection; this edge has {count} of them, numbered \
-             from 0"
-        ),
+        span_of(ctx, held.at),
+        format!("`{}` names no connection of `{subject}`: {}", held.name, reason(held, why)),
     )
     .with_note(
         "a handle is a name for a position in `connections`, so its value is an index into that \
-         sequence",
+         sequence, counted from 0",
         None,
+    );
+    let Some(origin) = held.origin else { return out };
+    out.with_note(
+        format!(
+            "`{subject}` inherits this `definition` from `{}` and resolves to {} connection(s); \
+             the declaration is correct for a node that reads the sequence whole",
+            display(ctx, linked, origin),
+            held.count
+        ),
+        Some(span_of(ctx, held.subject)),
     )
+}
+
+/// The half of `E0225`'s message that says which of the three conditions fired.
+fn reason(held: &Unbound, why: Rejection) -> String {
+    match why {
+        Rejection::Reserved => format!(
+            "`{}` is one of the two member names the language owns on an edge, and a handle may \
+             not take it",
+            held.name
+        ),
+        Rejection::NotAnIndex => {
+            "its value is not a position, which is a whole number written plainly".to_owned()
+        }
+        Rejection::OutOfRange(index) => {
+            format!("it names position {index}, and this edge writes {}", held.count)
+        }
+    }
 }

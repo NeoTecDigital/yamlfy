@@ -40,3 +40,6 @@ pub label: !!str untitled
 extends: Labelled
 pub label: owns
 pub connections: [Alpha, Beta]
+pub definition:
+  from: 0
+  to: 1

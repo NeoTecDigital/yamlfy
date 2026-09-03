@@ -152,6 +152,20 @@ fn unsatisfied(
 }
 
 /// `E0221` — the effective value contradicts a declared tag.
+///
+/// # Why the subject is named in a note
+///
+/// The primary span is the **effective value**, because that is the token whose
+/// text has to change. That token is frequently not the failing node's: a
+/// shared `<<` mixin supplying a bad value is one node written once and
+/// resolved into many, so every node that includes it fails at the same
+/// position. Without a note naming the subject, two failures print byte for
+/// byte identically and neither says which node to fix — and a reader who
+/// edits the mixin to satisfy one may break the others.
+///
+/// So the subject is stated first, with its own span, before the declaration
+/// that was violated and before the origin note that explains why the flattened
+/// node nevertheless looks consistent.
 fn tags(ctx: &Ctx, linked: &Linked, subject: &Subject, diagnostics: &mut Diagnostics) {
     for (base, declared) in &subject.ancestors {
         for field in declared.fields() {
@@ -192,10 +206,15 @@ fn contradicts(
         .and_then(|ast| ast.tag(declaration.1.value.1))
         .map_or_else(|| "the declared tag".to_owned(), spelling);
     let effective = subject.resolved.get(declaration.1.name).expect("a compared field");
+    let subject_name = display(ctx, linked, subject.place);
     let mut diagnostic = Diagnostic::new(
         Code::DeclaredTagMismatch,
         span_of(ctx, effective.value),
         format!("`{name}` is declared `{want}` by `{base}`, and this value is {found}"),
+    )
+    .with_note(
+        format!("`{subject_name}` is the node this is reported against"),
+        Some(span_of(ctx, subject.place)),
     )
     .with_note("declared here", Some(span_of(ctx, declaration.1.key)));
     if effective.origin != subject.place {

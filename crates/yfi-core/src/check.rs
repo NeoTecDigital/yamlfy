@@ -11,8 +11,10 @@
 //!   first and notes naming the **forward** edges that closed it;
 //! * **resolution** — every node's view, composed in D4.7's precedence order
 //!   with each clause consumed where it is written (D4.9);
-//! * **`E0216`/`E0217`** — what a path is allowed to reach, and what a `!ref`
-//!   is allowed to change;
+//! * **`E0217`** — what a `!ref` is allowed to change. Its sibling `E0216` —
+//!   what a path is allowed to *reach* — is pass 4's, raised inside path
+//!   resolution so that an invisible target resolves to nothing; see
+//!   [`reach`] for why the two axes live in different passes;
 //! * **member gates** — each member's two axes, declared by its `pub`/`mut`
 //!   prefix and composed with its scope's (D4.12, D6.5);
 //! * **`E0220`, `E0221`, `W0301`** — every concrete node validated against its
@@ -29,10 +31,27 @@
 //!
 //! When `E0212` fires, the pass makes the graph acyclic by depth-first search in
 //! the project's textual order and drops each back edge, so every node still has
-//! a defined view and the later checks report their own findings instead of
-//! cascading into a wall of unrelated errors. **That recovered value is not a
-//! language semantic and is never emitted: compilation fails whenever `E0212`
-//! was raised**, which [`Checked::is_cyclic`] is how a caller asks.
+//! a defined view, the walk terminates, and the pass never has to bail. **That
+//! recovered value is not a language semantic and is never emitted: compilation
+//! fails whenever `E0212` was raised**, which [`Checked::is_cyclic`] is how a
+//! caller asks.
+//!
+//! Nothing read off it is emitted either. A finding derived from the recovered
+//! view is a claim about a program that does not exist, and `W0303` was the
+//! proof: with `Base extends Patch` and `Patch extends: !ref Base`, recovery
+//! drops one edge, the surviving one carries the contributed key into the base,
+//! and the warning then reported the contribution as inert *because the base
+//! already inherits it* — with a note pointing at the very line contributing
+//! it. Nothing an author could do would satisfy that, because the inheritance
+//! it names is the compiler's own repair.
+//!
+//! So `E0212`, and the two gates that read no view (`E0217` and the pass-4
+//! visibility gate ahead of it), are reported unconditionally; `W0303`,
+//! `E0220`, `E0221`, `W0301` and the three `!edge` codes are collected into a
+//! second [`Diagnostics`] and folded in only when the graph was acyclic. The
+//! views and the [`Edges`] are still **built** either way — a caller that wants
+//! to inspect a broken project can, and [`Checked::is_cyclic`] tells it what it
+//! is looking at — only nothing is *reported* from them.
 //!
 //! # Cyclic data stays legal
 //!
@@ -180,25 +199,34 @@ pub fn check_with(
     severities: SeverityMap,
 ) -> Checked {
     let ctx = Ctx { project, interned };
-    let mut diagnostics = Diagnostics::with_severities(severities);
+    let mut diagnostics = Diagnostics::with_severities(severities.clone());
     let walk = cycles::walk_order(&ctx, linked.graph());
     let components = scc::components(linked.graph(), &walk);
     cycles::report(&ctx, linked, &components, &mut diagnostics);
+    let cyclic = cycles::any_cyclic(&components);
     let dropped = scc::back_edges(linked.graph(), &walk);
     let order = resolve::every_holder(&ctx);
     let views = resolve::resolve(&ctx, linked, &dropped, &order);
     reach::reach(&ctx, linked, &mut diagnostics);
-    inert::inert(&ctx, linked, &views, &mut diagnostics);
-    validate::validate(&ctx, linked, &views, &dropped, &order, &mut diagnostics);
-    let edges = edges::collect(&ctx, linked, &views, &order, &mut diagnostics);
+    // Everything below reads a **resolved** view, so everything below is
+    // collected apart and kept only when the graph was acyclic. See "Recovery
+    // is not a semantic" above.
+    let mut derived = Diagnostics::with_severities(severities);
+    inert::inert(&ctx, linked, &views, &mut derived);
+    validate::validate(&ctx, linked, &views, &dropped, &order, &mut derived);
+    let edges = edges::collect(&ctx, linked, &views, &order, &mut derived);
+    if !cyclic {
+        diagnostics.extend(derived);
+    }
     debug!(
         components = components.len(),
         dropped = dropped.len(),
         resolved = views.len(),
         edges = edges.len(),
+        cyclic,
         "checked project"
     );
-    Checked { diagnostics, views, edges, dropped, cyclic: cycles::any_cyclic(&components) }
+    Checked { diagnostics, views, edges, dropped, cyclic }
 }
 
 /// Graph fixtures for the unit tests of [`scc`], built without a project so the

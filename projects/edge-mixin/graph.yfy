@@ -1,0 +1,30 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::mixin
+visibility: public
+--- !node &Alpha
+pub port: 1
+--- !node &Beta
+pub port: 2
+# An **untagged** mixin — D7.1's ordinary form — declaring the endpoints once.
+# It carries no tag saying "edge", because there is no such tag to carry: the
+# abstract counterpart of a concrete node is whatever the author wrote, and
+# most of them write nothing.
+--- &Mixin
+pub connections: [Alpha]
+pub definition:
+  only: 0
+# The same case with a tag that says nothing about edges either.
+--- !node &Tagged
+pub connections: [Alpha, Beta]
+--- !edge &FromMixin
+extends: Mixin
+--- !edge &FromNode
+extends: Tagged
+# Inclusion absorbs the member the same way, so it reaches the same items.
+--- &Included
+pub connections: [Beta]
+--- !edge &Includes
+<<: Included

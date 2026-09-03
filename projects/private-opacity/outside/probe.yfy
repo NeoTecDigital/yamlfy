@@ -1,0 +1,16 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: opaque::outside
+visibility: public
+---
+# Three probes at one private scope: a member that exists, a member that does
+# not, and a node that does not. D4.12 gives the outsider no access to any of
+# it -- not its members, not its public surface, not its name -- so all three
+# must earn one answer of one shape. Any difference between them is an oracle
+# an outsider enumerates the scope with.
+Probe: !node &Probe
+  hit: ../vault/Secret.password
+  miss: ../vault/Secret.nosuch
+  absent: ../vault/NoSuchNode

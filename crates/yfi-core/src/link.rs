@@ -12,6 +12,9 @@
 //! * every **path resolved**, recorded with the *role* the operator it is an
 //!   operand of gives it and with whether it carried `!ref` (D4.3);
 //! * every **inheritance clause** validated for operand shape (D1.6, `E0211`);
+//! * every `!ref` **binding** that shadows a definition of its own file
+//!   (`E0219`), because a bare path is file-local and a binding that captures
+//!   one retargets lines nobody edited;
 //! * the **stratified inheritance graph** pass 5 runs SCC over;
 //! * every **extended-reference contribution**, with `E0214` and `W0303`.
 //!
@@ -65,8 +68,11 @@ pub(crate) mod graph;
 pub(crate) mod keys;
 pub(crate) mod path;
 mod refs;
+mod shadow;
 mod table;
 mod value;
+
+use std::collections::HashSet;
 
 use tracing::debug;
 use yfi_syntax::{Ast, Diagnostics, FileId, NodeId, SeverityMap};
@@ -240,11 +246,13 @@ pub fn link_with(project: &Project, interned: &Interned, severities: SeverityMap
     keys::check_member_names(&ctx, &mut diagnostics);
     let table = table::build(&ctx, &mut diagnostics);
     let space = path::Space::build(&ctx);
-    let references = refs::resolve(&ctx, &table, &space, &mut diagnostics);
+    let endpoints = endpoint_holders(&ctx, &table, &space);
+    let references = refs::resolve(&ctx, &table, &space, &endpoints, &mut diagnostics);
     let clauses = clause::collect(&ctx, &references, &mut diagnostics);
     let contributions = contrib::collect(&ctx, &table, &clauses, &mut diagnostics);
     let reference_count = references.len();
     let references = references.into_items();
+    shadow::check(&ctx, &table, &references, &mut diagnostics);
     let graph = graph::build(&clauses, &references);
     debug!(
         definitions = table.definitions().len(),
@@ -256,4 +264,30 @@ pub fn link_with(project: &Project, interned: &Interned, severities: SeverityMap
         "linked project"
     );
     Linked { diagnostics, table, references, clauses, graph, contributions }
+}
+
+/// The nodes whose `connections` member some `!edge` ends up reading (D4.13).
+///
+/// A `connections` item is a reach, so [`refs`] has to know — while it is
+/// looking at the item — whether the scalar beside it names a node. That is not
+/// answerable from the holder's tag: an edge inherits the member from bases
+/// that carry no tag saying so, and making every `!type`'s `connections` a
+/// reach would reserve the name across the language. It is answerable from the
+/// **inheritance relation**, which is what [`crate::edge::endpoint_holders`]
+/// reads.
+///
+/// The relation is built from clauses, and a clause operand may itself be a
+/// path, so the reference pass runs once as a silent [`refs::probe`] to give
+/// the clause collection something to read. No operand's meaning depends on the
+/// answer — the set decides one position and no operand is in it — so the
+/// probe's clauses are the clauses, and only the diagnostics are withheld,
+/// because the real run raises them.
+fn endpoint_holders(
+    ctx: &Ctx,
+    table: &table::Table,
+    space: &path::Space,
+) -> HashSet<(FileId, NodeId)> {
+    let probe = refs::probe(ctx, table, space);
+    let clauses = clause::collect(ctx, &probe, &mut Diagnostics::new());
+    crate::edge::endpoint_holders(ctx.interned, &clauses)
 }

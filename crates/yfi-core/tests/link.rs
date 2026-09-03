@@ -83,6 +83,29 @@ fn e0230_fires_when_two_files_define_one_canonical_path() {
 }
 
 #[test]
+fn e0230_fires_on_two_headerless_files_of_one_directory_defining_one_name() {
+    // A header is optional, so the duplicate check cannot be conditional on
+    // one. Without it `./Widget` names whichever file sorts first, and renaming
+    // `a.yfy` to `c.yfy` -- changing no text at all -- produces a different
+    // graph and a different diagnostic set. A value decided by a filename is
+    // what D1.8 refuses, so the condition is the directory, not the namespace.
+    let fixture = open("headerless-collision");
+    let rendered = fixture.rendered();
+    assert_eq!(fixture.count(Code::DuplicateNamespace), 1, "{rendered}");
+    assert!(
+        rendered.contains(
+            "b.yfy:3:11: `Widget` is already defined in another file of \
+             `headerless-collision`"
+        ),
+        "the primary span is the later definition's `&name`:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("a.yfy:7:11 first defined here"),
+        "and the note is the earlier one:\n{rendered}"
+    );
+}
+
+#[test]
 fn a_canonical_path_is_namespace_qualified_so_two_namespaces_do_not_collide() {
     // `other/c.yfy` defines `&Defaults` too. It is a different namespace and
     // therefore a different path, which is the whole reason an ordinary local
@@ -101,6 +124,34 @@ fn an_anchored_scalar_is_a_value_and_carries_no_canonical_path() {
     let paths: Vec<&str> = fixture.linked.definitions().iter().map(|held| &*held.path).collect();
     assert!(paths.contains(&"dup/Local"), "an anchored mapping is addressable: {paths:?}");
     assert!(!paths.iter().any(|path| path.ends_with("/limit")), "but a scalar is not: {paths:?}");
+}
+
+// ---------------------------------------------------------------- E0219
+
+#[test]
+fn e0219_fires_when_a_ref_binding_shadows_a_definition_of_its_own_file() {
+    // D4.12 justifies the bare form by saying a name never silently starts
+    // resolving somewhere else when a sibling file is added. A binding outranks
+    // the file's own definitions, so adding one line changed what an existing,
+    // unmodified line meant -- with matching keys, silently. The collision is
+    // now the error, so nothing is retargeted without a word.
+    let fixture = open("ref-binding-shadow");
+    let rendered = fixture.rendered();
+    assert_eq!(fixture.count(Code::BindingShadowsDefinition), 1, "{rendered}");
+    assert!(
+        rendered.contains("app.yfy:14:16: `Widget` is bound here by a `!ref`"),
+        "the primary span is the line that was added:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("app.yfy:11:15 `&Widget` is defined in this file"),
+        "and the note is the definition it outranks:\n{rendered}"
+    );
+}
+
+#[test]
+fn a_binding_that_collides_with_nothing_is_ordinary() {
+    let fixture = open("link-ref-binding");
+    assert_eq!(fixture.count(Code::BindingShadowsDefinition), 0, "{}", fixture.rendered());
 }
 
 // ---------------------------------------------------------------- E0211

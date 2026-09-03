@@ -40,6 +40,31 @@
 //! reports its whole subtree. Findings that belong to no discovered file — an
 //! unreadable directory, say — are always printed, because nothing else would
 //! carry them.
+//!
+//! # One map, one render, one decision about severity
+//!
+//! Two invariants hold this together and each is load-bearing rather than
+//! decorative:
+//!
+//! **One [`SourceMap`] for the whole invocation.** A [`FileId`] is an index
+//! into it, so a second map would restart at `FileId(0)` and every span from
+//! the first project would then name the second project's files. That is only
+//! a real constraint because the report is rendered **once, at the end**, from
+//! one accumulated collection: a per-group render would resolve each group's
+//! spans against that group's own map and the invariant would buy nothing.
+//! Rendering once is also what makes `--allow`/`--deny` counting and the exit
+//! code cover the whole invocation rather than a group of it.
+//!
+//! **Severity is decided once, by the pass that raised the finding.** The map
+//! is handed to `discover`, `link_with` and `check_with`, which is where it
+//! must be: `allow` suppresses *recording*, and a collection cannot un-record
+//! a diagnostic it never received. Everything here merges with
+//! [`Diagnostics::absorb`], which keeps the severity each item already carries,
+//! so there is exactly one place that answers "how serious is this".
+//!
+//! `--dump` prints each project's arenas as that project is checked, so the
+//! report follows the dumps rather than preceding them. The dumps are a debug
+//! aid tied to one project; the report is the invocation's.
 
 use std::collections::HashSet;
 use std::io::{StdoutLock, Write};
@@ -61,11 +86,8 @@ pub fn run(config: &Config, paths: &[PathBuf], dump: bool, root: Option<&Path>) 
         severities: options.parse.severities.clone(),
         options,
         dump,
-        errors: 0,
-        warnings: 0,
-        // One map for the whole invocation. `FileId` is an index into it, so a
-        // second map would restart at `FileId(0)` and every diagnostic from the
-        // first project would then render against the second project's files.
+        found: Diagnostics::new(),
+        // One map for the whole invocation; see the module documentation.
         sources: SourceMap::new(),
         out: std::io::stdout().lock(),
     };
@@ -112,8 +134,9 @@ struct Run {
     options: DiscoverOptions,
     severities: SeverityMap,
     dump: bool,
-    errors: usize,
-    warnings: usize,
+    /// Every finding of every group, already carrying its decided severity and
+    /// waiting for the one render in [`Run::finish`].
+    found: Diagnostics,
     sources: SourceMap,
     out: StdoutLock<'static>,
 }
@@ -146,39 +169,38 @@ impl Run {
             reported = selection.reported.len(),
             "checked project"
         );
-        self.report(&project, &selection, linked.diagnostics(), checked.diagnostics());
+        self.collect(&project, &selection, linked.diagnostics(), checked.diagnostics());
         self.sources = project.into_sources();
         for path in &selection.absent {
             self.loose(path);
         }
     }
 
-    /// Print the selected files' diagnostics, and their arenas when asked.
+    /// Take the selected files' diagnostics into the invocation's collection,
+    /// and print their arenas when asked.
     ///
     /// The three collections are kept apart by the passes that raise them and
-    /// are merged here so one count and one exit code cover all of them.
-    /// Merge order does not decide print order: [`Diagnostics::render`] sorts
-    /// by position, so a reader gets a file read top to bottom rather than
-    /// grouped by which pass happened to find what.
-    fn report(
+    /// are merged here so one render, one count and one exit code cover all of
+    /// them. Merge order does not decide print order: [`Diagnostics::render`]
+    /// sorts by position, so a reader gets a file read top to bottom rather
+    /// than grouped by which pass happened to find what.
+    ///
+    /// Severity is not re-decided. Each pass was handed the configuration and
+    /// has already applied it, `Allow` included, so absorbing is the whole job.
+    fn collect(
         &mut self,
         project: &Project,
         selection: &Selection,
         linked: &Diagnostics,
         checked: &Diagnostics,
     ) {
-        let mut selected = Diagnostics::with_severities(self.severities.clone());
         let passes = [project.diagnostics(), linked, checked];
-        for item in passes.iter().flat_map(|held| held.items()) {
-            if item.span.is_some_and(|span| selection.hidden.contains(&span.file)) {
-                continue;
-            }
-            selected.push(item.clone());
-        }
-        let text = selected.render(project.sources());
-        let _ = write!(self.out, "{text}");
-        self.errors += selected.error_count();
-        self.warnings += count(&selected, Severity::Warning);
+        let selected = passes
+            .iter()
+            .flat_map(|held| held.items())
+            .filter(|item| !item.span.is_some_and(|span| selection.hidden.contains(&span.file)))
+            .cloned();
+        self.found.absorb(selected);
         if !self.dump {
             return;
         }
@@ -189,21 +211,26 @@ impl Run {
 
     /// Read a path the project does not contain — one whose extension the
     /// project ignores, or one that cannot be read at all.
+    ///
+    /// Into the same map as everything else, so its spans render beside the
+    /// projects' at the end rather than against a map of their own.
     fn loose(&mut self, path: &Path) {
         let dialect = self.options.class_of(path).unwrap_or(FileClass::Data).dialect();
         let parsed = parse_file(&mut self.sources, path, &self.options.parse, dialect);
         info!(path = %path.display(), nodes = parsed.ast.nodes().len(), "parsed outside a project");
-        let text = parsed.diagnostics.render(&self.sources);
-        let _ = write!(self.out, "{text}");
         if self.dump {
             let _ = write!(self.out, "{}", parsed.ast.dump());
         }
-        self.errors += parsed.diagnostics.error_count();
-        self.warnings += count(&parsed.diagnostics, Severity::Warning);
+        self.found.extend(parsed.diagnostics);
     }
 
+    /// Render the whole invocation once, against the one map, and decide the
+    /// exit code from what it holds.
     fn finish(mut self) -> ExitCode {
-        let (errors, warnings) = (self.errors, self.warnings);
+        let text = self.found.render(&self.sources);
+        let errors = self.found.error_count();
+        let warnings = count(&self.found, Severity::Warning);
+        let _ = write!(self.out, "{text}");
         let _ = writeln!(self.out, "{errors} error(s), {warnings} warning(s)");
         if errors == 0 {
             ExitCode::SUCCESS

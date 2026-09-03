@@ -13,6 +13,30 @@
 //! restating them. Filtering is done as the caller walks
 //! ([`ModelView::fields_readable_from`]) so that an unreadable member is absent
 //! from a result by shape rather than present as a hole.
+//!
+//! # Gated and ungated accessors
+//!
+//! Every walk that can disclose something comes in two forms, and the naming is
+//! a convention rather than a coincidence:
+//!
+//! | ungated | gated |
+//! |---|---|
+//! | [`ModelView::view`] | — (there is no partial `View`; ask for fields) |
+//! | [`ModelView::fields`] | [`ModelView::fields_readable_from`] |
+//! | [`ModelView::connections`] | [`ModelView::connections_readable_from`] |
+//!
+//! **The `_readable_from` form is the default.** Anything answering on behalf
+//! of an observer — a query, a serialisation, an API response — must take that
+//! one, because the ungated form returns the compiler's whole answer and the
+//! compiler is allowed to know things the observer is not. The ungated forms
+//! exist for the two callers that legitimately have no observer: the compiler's
+//! own tests, which assert what was *resolved*, and tooling that is the project
+//! rather than a reader of it.
+//!
+//! They keep the shorter names because they are the primitives the gated ones
+//! are built from — `fields_readable_from` is `fields` plus a filter — and a
+//! reader following the definition should not have to step through a rename to
+//! see that the predicate is pass 5's and is applied in exactly one place.
 
 use yfi_syntax::{FileId, NodeId, Span};
 
@@ -125,13 +149,23 @@ impl<'a> ModelView<'a> {
         self.image.linked.path_of(self.file(), self.node())
     }
 
-    /// Its resolved view — all five tiers of D4.7.
+    /// Its resolved view — all five tiers of D4.7, **ungated**.
+    ///
+    /// The whole answer, including members an observer may not read. Answering
+    /// on behalf of somebody? Walk [`ModelView::fields_readable_from`] instead:
+    /// there is no such thing as a partially readable `View`, which is why this
+    /// has no gated twin.
     #[must_use]
     pub fn view(self) -> Option<&'a View> {
         self.image.checked.resolved(self.file(), self.node())
     }
 
-    /// Every member, highest precedence first, unfiltered.
+    /// Every member, highest precedence first, **unfiltered**.
+    ///
+    /// Discloses members an observer may not read. Use
+    /// [`ModelView::fields_readable_from`] for anything answering on behalf of
+    /// one; this is the primitive that one is built from, and is for callers
+    /// with no observer at all.
     pub fn fields(self) -> impl Iterator<Item = FieldView<'a>> {
         let image = self.image;
         self.view()
@@ -190,8 +224,12 @@ impl<'a> ModelView<'a> {
         self.out().iter().filter(|held| held.kind == EdgeKind::Connection)
     }
 
-    /// The nodes this edge relates, in written order. Empty for a node that is
-    /// not an `!edge`.
+    /// The nodes this edge relates, in written order, **unfiltered**. Empty for
+    /// a node that is not an `!edge`.
+    ///
+    /// Discloses endpoints an observer may not see. Use
+    /// [`ModelView::connections_readable_from`] for anything answering on
+    /// behalf of one.
     ///
     /// An endpoint may itself be an edge: an edge is a node, so an edge over
     /// edges is a legal and intended shape, and it is what composing relations
@@ -264,6 +302,29 @@ impl<'a> ModelView<'a> {
             .iter()
             .filter(|held| held.kind == EdgeKind::Connection)
             .filter_map(move |held| image.model(held.from))
+    }
+
+    /// The `!edge` nodes an observer in `observer` may be told relate this
+    /// node, in the reverse index's order.
+    ///
+    /// The counterpart of [`ModelView::connections_readable_from`], and it must
+    /// exist: "what relates this public node" asked without a gate hands the
+    /// asker a **private** edge, and hands it to them by name. It is the same
+    /// two predicates read from the other end — the edge must be a node this
+    /// observer can see, and the edge's `connections` must be readable from
+    /// there, because an edge whose endpoints are undisclosed has not disclosed
+    /// that this node is one of them.
+    ///
+    /// Filtered as it walks, so an edge the observer may not be told about is
+    /// absent by shape.
+    pub fn incident_edges_visible_from(
+        self,
+        observer: ScopeId,
+    ) -> impl Iterator<Item = ModelView<'a>> {
+        self.incident_edges().filter(move |held| {
+            held.is_visible_from(observer)
+                && held.connections_field().is_some_and(|field| field.is_readable_from(observer))
+        })
     }
 
     /// This node's `connections` member, as a member — which is what carries

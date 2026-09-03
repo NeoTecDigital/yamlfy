@@ -1,0 +1,20 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: shared
+---
+# One mixin, two failures. `E0221`'s primary span is the *effective* value, and
+# both nodes resolve `port` to the same node of `&Wrong` -- so without a note
+# naming the node the finding is reported against, the two errors print
+# identically and neither says which node to fix.
+Wrong: &Wrong
+  port: !!str "8080"
+Base: !type &Base
+  port: !!int
+Bad: !node &Bad
+  <<: *Wrong
+  extends: *Base
+Also: !node &Also
+  <<: *Wrong
+  extends: *Base
