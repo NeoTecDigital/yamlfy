@@ -215,8 +215,14 @@ fn a_block_scalar_survives_crlf_line_endings() {
     // and `<?-- -->` inside one silently became a code block -- changing the
     // node's kind and dropping part of its value, with no diagnostic. Any
     // checkout with `core.autocrlf=true` hit it, and the whole corpus is LF.
-    let lf = "script: |\n  // not a comment\n  keep\nnext: 1\n";
-    let crlf = "script: |\r\n  // not a comment\r\n  keep\r\nnext: 1\r\n";
+    // The blank line is load-bearing. Accepting `\r` in the block *header*
+    // alone leaves the block *scanner* stopping at a blank line under CRLF --
+    // the cursor lands on the `\r`, the line is judged non-blank, and every
+    // line below it is rescanned as ordinary source. The first version of this
+    // test used a block with no blank line and so never reached it.
+    let lf = "Doc: !node &Doc\n  pub text: |\n    keep\n\n    // not a comment\n";
+    let crlf = lf.replace('\n', "\r\n");
+    let crlf = crlf.as_str();
 
     let (lf_value, crlf_value) = (block_value(lf), block_value(crlf));
     assert!(lf_value.contains("// not a comment"), "LF: {lf_value:?}");

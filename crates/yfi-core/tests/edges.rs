@@ -461,3 +461,51 @@ fn what_relates_a_node_is_the_relations_and_not_everything_pointing_at_it() {
          value are members the language owns, and neither is read as one"
     );
 }
+
+#[test]
+fn a_sequence_an_edge_reads_holds_endpoints_whatever_wrote_it() {
+    // F1. `endpoint` was decided *after* four other exits in `refs::site`, so a
+    // sequence nested inside another sequence -- or standing as a `<<`/`extends`
+    // operand list, or as a complex mapping key -- reached its own answer first.
+    // Each left the edge relating nothing, silently, and the items reappeared as
+    // data edges leaving the anonymous list. Aliasing a shared sequence is the
+    // ordinary way to write one, so this was the flagship feature producing a
+    // wrong graph on its most natural input.
+    let fixture = open("edge-nested-sequence");
+    let image = image(&fixture);
+
+    assert_eq!(endpoints(&image, "Web"), ["Alpha", "Beta"]);
+    assert_eq!(endpoints(&image, "Db"), ["Beta", "Gamma"]);
+
+    // And the endpoints are *connections*, not data edges from the list.
+    for name in ["Web", "Db"] {
+        let held = image.model(by_name(&image, name)).expect("a node");
+        assert!(
+            held.out().iter().all(|edge| edge.kind == EdgeKind::Connection),
+            "{name} emitted something other than connections: {:?}",
+            held.out().iter().map(|edge| edge.kind).collect::<Vec<_>>()
+        );
+    }
+    assert!(
+        !image.nodes().any(|held| held.name().is_none()
+            && held.out().iter().any(|edge| edge.kind == EdgeKind::Data)),
+        "an anonymous list must not emit data edges to an edge's endpoints"
+    );
+}
+
+#[test]
+fn an_edge_reads_a_connections_installed_on_it_by_an_extended_reference() {
+    // M5. Reach-ness follows D4.7's contribution edges backwards from every
+    // `!edge`, and tier 5 runs *both* ways: `X extends: !ref Rel` installs
+    // `own(X)` onto `Rel`, so `Rel` holds a `connections` it never wrote. That
+    // reverse direction is documented and load-bearing, and had no test --
+    // deleting it left `Rel` relating nothing, silently, which is the class of
+    // defect the whole reach-ness rule exists to remove.
+    let fixture = open("edge-tier-five");
+    let image = image(&fixture);
+    assert_eq!(
+        endpoints(&image, "Rel"),
+        ["Alpha", "Beta"],
+        "an edge reads what an extended reference installed on it"
+    );
+}

@@ -1,0 +1,20 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: tier5
+visibility: public
+mutability: mutable
+--- !node &Alpha
+pub p: 1
+--- !node &Beta
+pub p: 2
+# An edge that declares nothing itself.
+--- !edge &Rel
+pub label: plain
+# Its endpoints arrive by an extended reference: `X` installs `own(X)` onto
+# `Rel`, so `Rel` reads a `connections` it never wrote. Reach-ness therefore
+# has to follow the tier-5 edge in the *reverse* direction too.
+--- !node &X
+extends: !ref Rel
+pub connections: [Alpha, Beta]

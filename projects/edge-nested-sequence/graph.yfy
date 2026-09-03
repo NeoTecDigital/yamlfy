@@ -1,0 +1,23 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: nested
+visibility: public
+imports: [shared/pairs.yfy]
+--- !node &Alpha
+pub p: 1
+--- !node &Beta
+pub p: 2
+--- !node &Gamma
+pub p: 3
+# An item of a sequence an edge reads is an endpoint whatever wrote the
+# sequence. These used to relate nothing, silently, and the items reappeared
+# as data edges leaving the anonymous list.
+--- !edge &Web
+pub connections: *WebPair
+pub definition:
+  from: 0
+  to: 1
+--- !edge &Db
+pub connections: *DbPair

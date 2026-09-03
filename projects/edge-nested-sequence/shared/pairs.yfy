@@ -1,0 +1,15 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: nested::shared
+visibility: public
+# A sequence of sequences. The inner ones are what edges read, and each is
+# nested inside another sequence rather than written under a mapping key.
+--- &Groups
+- &WebPair
+  - ../Alpha
+  - ../Beta
+- &DbPair
+  - ../Beta
+  - ../Gamma

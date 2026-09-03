@@ -298,7 +298,18 @@ impl Scan {
             while self.source.get(cursor) == Some(&' ') {
                 cursor += 1;
             }
-            if !matches!(self.source.get(cursor), None | Some('\n')) && cursor - start <= indent {
+            // `\r` belongs beside `\n` here for the same reason it does in
+            // `is_block_header`: under CRLF a blank line inside a block scalar
+            // ends `\r\n`, so the cursor lands on the `\r`, the line is judged
+            // non-blank, and the scan stops at the blank line. Everything below
+            // it is then rescanned as ordinary source — a `//` inside the
+            // literal becomes a comment and a `<?-- -->` becomes a code block,
+            // silently. Accepting `\r` in the header alone fixed only blocks
+            // with no blank line in them, which is what the first regression
+            // happened to use.
+            if !matches!(self.source.get(cursor), None | Some('\n' | '\r'))
+                && cursor - start <= indent
+            {
                 break;
             }
             at = self.line_end(start);

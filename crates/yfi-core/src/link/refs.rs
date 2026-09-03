@@ -392,10 +392,28 @@ fn site(
         // mapping wrote. It still holds endpoints, and it owns nothing: the
         // reverse edge a `!ref` contributes lands on the context that declared
         // the dependency, and here there is no such context to name.
-        (Some(_), None) => return endpoint.then(|| connection(None)),
+        (Some(_), None) => {
+            return Some(if endpoint { connection(None) } else { loose });
+        }
         (Some(_), Some(held)) => (held, parent, false),
         (None, _) => (parent, node, true),
     };
+    // **An item of a sequence an edge reads is an endpoint, whatever wrote the
+    // sequence.** D4.13 says a sequence an edge reads is a reach position *for
+    // every reader of it*, so this is decided before anything about the
+    // sequence's own surroundings is consulted.
+    //
+    // It used to be decided last, behind four exits: a sequence nested in
+    // another sequence, a sequence standing as a complex mapping key, and a
+    // sequence written as a `<<` or `extends` operand list all reached their
+    // own answer first. Each left the edge relating **nothing**, with no
+    // diagnostic — and the items, if anchored, reappeared as data edges leaving
+    // the anonymous list. That is a silently wrong graph in the one feature
+    // D4.13 exists to describe, reached by aliasing a shared sequence, which is
+    // the ordinary way to write one.
+    if !direct && endpoint {
+        return Some(connection(ctx.interned.parent_of(file, parent)));
+    }
     let Some(entries) = ast.entries(holder) else { return Some(loose) };
     let entry = entries.iter().find(|entry| entry.value == operand)?;
     let owner = Some(holder);
@@ -404,9 +422,6 @@ fn site(
     }
     if is_extends_key(ast, entry.key) {
         return Some(Site { role: RefRole::Extension, binds: None, owner });
-    }
-    if !direct && endpoint {
-        return Some(connection(owner));
     }
     let binds = direct.then(|| ast.scalar(entry.key).map(|key| key.value.clone())).flatten();
     Some(Site { role: RefRole::Data, binds, owner })
