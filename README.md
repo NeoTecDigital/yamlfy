@@ -30,6 +30,7 @@ name was meant as an operation.
 ## Three operators
 
 ```yfy
+# stock/formulary.yfy — the Guild's
 --- !yfi/header
 namespace: guild::stock
 visibility: public
@@ -41,17 +42,24 @@ BasePotion: !type &BasePotion
 
 water: &water
   pub solvent: spring-water
+```
 
+```yfy
+# bench/apprentice.yfy — someone else's
+--- !yfi/header
+namespace: guild::bench
+visibility: public
+---
 MoonTonic: !node                // `<<` — a tonic *has* water in it
-  <<: *water
+  <<: ../stock/water
   pub label: Moon Tonic
 
 HealingDraught: !node           // `extends` — a draught *is a* potion
-  extends: *BasePotion
+  extends: ../stock/BasePotion
   pub label: Healing Draught
 
 Patch: !node                    // `extends: !ref` — *every* potion gains a reagent
-  extends: !ref BasePotion
+  extends: !ref ../stock/BasePotion
   pub reagent: sunroot
 ```
 
@@ -64,6 +72,14 @@ Two of the three are safe and one changes the world, which is why they do not lo
 alike. `P` is a path, spelled the way a filesystem is spelled — `../shared/Service`,
 `peer/Service`, `Service`, `Service.tls.port` — and naming is reaching: there is
 nothing to import first.
+
+The third one above is an **error**, and that is the point of writing it in two
+directories. `guild::stock` never said `mutability: mutable`, so it is `immutable`
+(the default), and reopening its family from another directory is `E0217` at the `!ref`
+— before the contribution is computed and before anyone has to notice the tag. **Inside
+one file there is no gate**: a file may always rewrite what it wrote, so the same three
+entries in one document compile, and the only signal is `W0303` on a contribution the
+base already defines. The specification's D4.6 works the whole example through.
 
 ## Two access axes, closed by default
 
@@ -93,9 +109,11 @@ cargo test --workspace
 cargo run -- check path/to/project
 ```
 
-`yamlfy check` takes a file or a directory and runs every pass that can raise a
-diagnostic — `discover`, `parse`, `intern`, `link`, `check` — so what the compiler
-finds is what you are told, not only what the file readers found. A directory is one
+`yamlfy check` takes a file or a directory and runs the whole front half of the
+compiler — `discover`, `parse`, `intern`, `link`, `check` — so what the compiler finds is
+what you are told, not only what the file readers found. Of those, `intern` raises no
+diagnostic of its own; it is in the list because the passes after it cannot run without
+it, not because it has anything to report. A directory is one
 project: its tree is the namespace and scope hierarchy, and checking one file is a
 project of one file.
 

@@ -3,9 +3,14 @@
 
 # Yamlfication — Semantic Decisions
 
-**Status:** normative for Phase 1. **Applies to:** the front end (implemented) and
-the `discover` / `link` / `check` passes (specified here, implemented in Phase 1
-steps 3–5).
+**Status:** normative for Phase 1. **Applies to:** the front end and all six passes —
+`discover`, `parse`, `intern`, `link`, `check` and `emit` — every one of which is
+implemented. `intern` and `emit` raise no diagnostic of their own, which is why an
+earlier version of this line omitted them; they are still governed here, because
+`intern` is where a member's flag prefix is taken off (D4.12) and a tag is classified
+against the file's class (D6.6), and `emit` is where a member's gate is *applied*
+(D4.12, D6.5) and where an edge's endpoints become an index (D4.13). A pass that
+reports nothing still decides something.
 
 Yamlfication is a graph database whose source language is **yfi**, written in `.yfy`
 files and compiled by **`yamlfy`**. §11 states the language as a whole; this preamble
@@ -210,9 +215,39 @@ and would make a document's legality depend on which values happened to collide.
 **Recovery.** So that `E0212` does not cascade into a wall of unrelated errors, the
 check pass makes the merge graph acyclic by depth-first search in document order and
 **drops each back edge** — the merge edge whose target is already on the DFS stack.
-Every node then has a defined resolved view and later passes can report their own
-findings. This recovery value is **not** a language semantic and is never emitted:
+Every node then has a defined resolved view, the walk terminates, and the pass never has
+to bail. This recovery value is **not** a language semantic and is never emitted:
 compilation fails whenever `E0212` was raised.
+
+**Nothing derived from the recovered view is reported either, and that is stronger than
+"never emitted".** A finding read off the repair is a claim about a program that does
+not exist, and `W0303` is the proof. With `Base extends Patch` and
+`Patch extends: !ref Base`, recovery drops one edge; the surviving one carries the
+contributed key into the base; and the warning then reports the contribution as inert
+*because the base already inherits it* — with a note pointing at the very line
+contributing it. Nothing an author could write would satisfy that, because the
+inheritance it names is the compiler's own repair. So once `E0212` has fired,
+**`E0220`, `E0221`, `W0301`, `E0223`, `E0224`, `E0225` and `check`'s half of `W0303` are
+all suppressed for that compilation.**
+
+The line is drawn at *reads a resolved view*, not at *is a warning* or *is pass 5's*, so
+three things are deliberately outside it:
+
+* **`E0212` itself**, which is the finding;
+* **`E0217`** and the visibility gate in front of it (`E0216`), which ask a question of
+  the scope tree and of a path, both of which are final before any view is composed;
+* **the half of `W0303` that `link` raises** (D4.11), which compares a contribution
+  against `own(base)` — the keys the base *writes* — and is decidable with nothing
+  resolved. It is the same code and the same fault; it is simply not derived from
+  anything the repair invented, so it survives. Only `check`'s half, which tests the
+  base's `<<` and `extends` chain, is withheld — and that is exactly the half the
+  example above is about.
+
+**The views and the edge records are still built.** Suppression is about *reporting*,
+not about computing: a caller holding a cyclic project can still inspect every resolved
+view and every `!edge`'s endpoints, and ask whether the graph was cyclic. What it may
+not do is emit — emission is refused outright — and what it will not receive is a
+diagnostic about the repair.
 
 **What is *not* an error.** A cycle in the *data* graph is legal and is the point of
 the system. Only cycles **through merge edges** are rejected.
@@ -293,7 +328,18 @@ Fixture: `fixtures/shadowing/shadow-across-nesting.yml`.
 ### D2.3 — Redefinition is legal, and warned about
 
 Shadowing is valid YAML, so it is `W0300`, a **warning**, not an error. Its severity is
-configurable per project (`--deny W0300`, or `severity = { W0300 = "error" }`).
+configurable per project — `--deny W0300` on the command line, or in `yamlfy.toml`:
+
+```toml
+[diagnostics]
+severity = { W0300 = "error" }
+```
+
+The table header is part of the spelling. `severity` is a key of `[diagnostics]`, not a
+top-level one, and a bare `severity = { … }` at the top of the file is rejected rather
+than quietly ignored — configuration is TOML precisely so that a wrong shape is a
+parse error at the line that wrote it (*an earlier draft of this decision, and of D5.3,
+printed the spelling without its table and was wrong*).
 
 The diagnostic carries **both** spans: the shadowing definition and the one it hides.
 
@@ -340,8 +386,19 @@ not work. Within a file, **cross-document edges must use `!ref`, and only
 intra-document edges may use aliases.** Node-level inheritance via `<<` is therefore
 also confined to a single document unless `!ref` is later given merge semantics.
 
+**A cross-document alias is *rejected as an operand*, not merely reported.** An
+`extends: *Base` or `<<: *Base` whose `Base` was anchored in an earlier document earns
+`E0130` and then forms **no inheritance edge at all**: the operand is dropped, with no
+second code. The parser's binding is real enough to index with, so keeping it would be
+easy and would be wrong — the consequences print above the cause and blame a base the
+compiler has just said this document cannot name. A required field of that base reports
+as unsatisfied (`E0220`), an ancestry the reader cannot see appears on the `is_a` axis,
+and the author is sent to fix a node that was never theirs. One illegal alias is one
+diagnostic, and the graph is built as though the line said nothing.
+
 Fixtures: `fixtures/shadowing/no-shadow-across-documents.yml`,
-`fixtures/cycles/cycle-shared-across-documents.yml`.
+`fixtures/cycles/cycle-shared-across-documents.yml`,
+`projects/cross-document-extends`.
 Implemented: `E0130`.
 
 **Upstream note.** `saphyr-parser` 0.0.12 clears its anchor table only on the
@@ -389,8 +446,15 @@ struct Pos { byte: u32, line: u32, col: u32 }   // line and col are 1-based
 struct Span { file: FileId, start: Pos, end: Pos }   // half-open
 ```
 
-* `byte` is an offset into the **original file bytes**, so it can index the file on
-  disk directly.
+* `byte` is an offset into the **original file bytes, byte-order mark included**, so it
+  can index the file on disk directly — which is what a reader comparing a diagnostic
+  against `hexdump` or an editor's byte column needs. It is **not** an index into the
+  text this compiler exposes: that text is BOM-stripped and therefore begins after the
+  mark, so the two differ by the mark's length. The difference is published rather than
+  left to be guessed at, as `byte_base` — zero for the overwhelming majority of files,
+  and exactly the point of asking rather than assuming. Two offsets, one of which is not
+  an index into the other, is the kind of thing that is only ever wrong once it is
+  written down as one; see D3.3 and D8.4, which is where the second such pair lives.
 * `line` and `col` are both **one-based**, and `col` counts **characters**, matching
   what an editor shows.
 
@@ -488,28 +552,52 @@ parsed and kept.
 | `E0212` | error | cyclic inheritance (D1.8, D4.10) | check |
 | `E0213` | error | path names nothing (D4.3, D4.12) | link |
 | `E0214` | error | conflicting extended references (D4.11) | link |
-| `E0215` | — | **retired.** `!ref` into a file this file does not import | — |
-| `E0216` | error | path into a scope this scope cannot see (D4.12) | check |
+| `E0215` | — | **retired, and never reused.** `!ref` into a file this file does not import | — |
+| `E0216` | error | path into a scope this scope cannot see (D4.12) | link |
 | `E0217` | error | `!ref` into a scope this scope may not write (D4.12, D6.5) | check |
 | `E0218` | error | path addresses a member its target does not hold (D4.12) | link |
+| `E0219` | error | a `!ref` binding shadows a definition of its own file (D4.12) | link |
 | `E0220` | error | required field unsatisfied (D7.3) | check |
 | `E0221` | error | declared-tag mismatch (D7.3, D4.8) | check |
 | `E0222` | error | `!oneof` is reserved, not implemented (D7.4) | discover |
+| `E0223` | error | an `!edge` relates nothing (D4.13) | check |
+| `E0224` | error | an edge's `connections` or `definition` has the wrong shape (D4.13) | check |
+| `E0225` | error | a `definition` handle names no position (D4.13) | check |
 | `W0301` | warning | undeclared field on a concrete node (D7.3) | check |
 | `W0303` | warning | inert extended-reference contribution (D4.11) | link, check |
 | `E0230` | error | conflicting scope declarations (D6.1) | discover |
-| `E0230` | error | duplicate *definition* in a namespace (D6.1) | link |
+| `E0230` | error | duplicate *definition* in a directory (D6.1) | link |
 | `E0231` | error | bad header axis value (D6.4) | discover |
 | `E0240` | error | unresolved import (D6.7) | discover |
 | `E0241` | error | import target not visible (D6.7, D6.5) | discover |
 
+**This table is the whole vocabulary.** Every code the compiler can raise is listed
+here and in `Code::all()`, which is what `--deny` validates a configuration against; a
+code in one and not the other would be either a diagnostic no project can configure or
+a configuration key that silences nothing. The numbering after `E0225` resumes at
+`E0230`, which begins the scope block; the gap is a block boundary and holds nothing.
+Two numbers appear elsewhere in this document and are deliberately **not** in the table:
+`E0215`, retired below and never to be reused, and `W0302`, which §5 records as a
+deferred idea and for which **no number is allocated** — the spelling there is a label
+for a discussion, not a code the compiler knows.
+
 Nothing from `E0211` down is implemented in `yfi-syntax`; each needs more than one
-file. `E0211`, `E0213`, `E0214`, `E0218` and `E0230`'s duplicate-definition condition are
-**raised by `link`** (pass 4), which walks every path against the project's scope tree
-and builds the inheritance graph. **`E0212` is raised by `check`** (pass 5), which runs
-SCC over that graph; `E0216`, `E0217` and `E0220`–`W0301` are `check`'s too, the first
-two because a reach is *permitted* against the scope tree and the rest because they
-need declared views.
+file. `E0211`, `E0213`, `E0214`, `E0216`, `E0218`, `E0219` and `E0230`'s
+duplicate-definition condition are **raised by `link`** (pass 4), which walks every path
+against the project's scope tree and builds the inheritance graph. **`E0212` is raised
+by `check`** (pass 5), which runs SCC over that graph; `E0217`, `E0220`–`W0301` and the
+three `!edge` codes are `check`'s, `E0217` because it is asked of a target that already
+resolved and the rest because they need resolved or declared views.
+
+**`E0216` is `link`'s and not `check`'s, and that placement is a semantic decision.**
+Visibility is asked *inside path resolution*, in front of the lookup — see D4.12 — so an
+invisible landing resolves to nothing rather than resolving and then being complained
+about. A gate that only decorates a diagnostic is not a gate: with the lookup first,
+`vault/Secret.password`, `vault/Secret.nosuch` and `vault/NoSuchNode` earn three
+*distinguishable* answers, and between them an outsider enumerates a private scope's
+node names and each node's member names. Its sibling `E0217` stays in `check` because it
+is asked of a target that is already in view, which is exactly what makes the ordering
+of the two axes structural instead of conventional.
 
 **`E0213` and `E0218` are two codes because the fixes are opposite.** `E0213` says the
 walk did not land — no such directory, no such peer, no such definition, or a `..` past
@@ -518,11 +606,17 @@ the root — and the author's next move is the path. `E0218` says the walk lande
 commonest question about a reach — *did I get the address wrong, or the field?* — the
 one thing the diagnostic did not answer.
 
-**`E0215` is retired, not renumbered.** It fired when a `!ref` addressed a file the
-referencing file had not imported, and D4.12 no longer has that rule: the path *is* the
-reach, so there is nothing left to be out of step with. The number is burned rather than
-reused, because a project pinning `--deny E0215` in configuration should get a clean
-"unknown code" rather than a silent redirection to an unrelated rule.
+**`E0215` is retired, not renumbered, and it stays retired.** It fired when a `!ref`
+addressed a file the referencing file had not imported, and D4.12 no longer has that
+rule: the path *is* the reach, so there is nothing left to be out of step with. The
+number is burned rather than reused, because a project pinning `--deny E0215` in
+configuration should get a clean "unknown code" rather than a silent redirection to an
+unrelated rule. So the block runs `E0213, E0214, —, E0216, E0217, E0218, E0219, …` and
+the hole stays a hole: `E0219`, the newest code here and the obvious candidate for
+filling it, was allocated at the **end** instead. A code that once meant one thing and
+now means another makes every configuration file and every archived report naming it
+wrong without saying so, and it does that silently, which is the whole objection.
+**No retired number is ever reused**, here or later.
 
 **`W0303` is raised by both passes over disjoint inputs**, because D4.5's additivity
 rule spans two things only one pass can see. `link` reports a contributed key the base
@@ -543,8 +637,9 @@ should not be told their merge is cyclic.
 **`E0230` is one code over three conditions, raised by two passes.** `discover` raises
 it for the two *declaration* conflicts it can decide from headers and directories alone:
 files in one directory disagreeing about an axis, and one namespace claimed by two
-directories (D6.1). The **duplicate definition** — one namespace, one name, two files —
-is raised by `link`, for the same reason `E0213` is: it is detected when the definition
+directories (D6.1). The **duplicate definition** — one *directory*, one name, two files,
+whether or not either declares a namespace (D6.1) — is raised by `link`, for the same
+reason `E0213` is: it is detected when the definition
 table is built, and building that table is what resolving a path means. It could not be
 answered earlier without first deciding *which* anchors are addressable, and that
 decision is now made: **an anchored node that can be a parent scope — a collection — is
@@ -590,7 +685,9 @@ because D1.7 bounds merge keys by *role* while D1.1 identifies ordinary keys by
 
 Holding the two apart is also what preserves D1.1's coexistence rule: a literal
 `"<<"` key never meets the real merge key in the same table, so the two remain
-different keys.
+different keys. **`extends` has no such shelter and no such coexistence**: it is bucketed
+by nothing, so `extends:` beside `"extends":` is one text twice and is `E0110` — see
+D4.2, which corrects the analogue it used to claim.
 
 Non-scalar keys are not compared: deciding whether two mappings are the same key
 needs resolved values, which the parser does not have. A merge tag on a
@@ -598,6 +695,33 @@ needs resolved values, which the parser does not have. A merge tag on a
 see §5.
 
 Fixture: `fixtures/malformed/duplicate-key.yml`.
+
+**Severity is decided once, by the pass that raises the finding.** Configuration is
+handed to `discover`, `link` and `check`, and each applies it as it records; that
+placement is forced rather than tidy, because `allow` suppresses **recording** and a
+collection cannot un-record a diagnostic it never received. Everything downstream —
+the command line merging three passes' collections into one — preserves the severity
+each item already carries and re-decides nothing. So there is exactly one place that
+answers *how serious is this*, and `--allow` costs nothing at all rather than costing a
+filter at print time.
+
+**A compilation renders one report, from one source map, ordered by position.** A
+`FileId` is an index into that map, so a second map would restart at `FileId(0)` and
+every span from the first project would then name the second project's files. Findings
+arrive by *pass* rather than by position — every file's parse diagnostics, then
+everything the project-wide passes found — so insertion order routinely prints a
+consequence above its cause and interleaves files arbitrarily. The report is therefore
+sorted by `(file, line, column)` across the **whole invocation**, which is D6.3's
+`(file rank, document index, node index)` expressed in the terms a diagnostic carries: a
+file's identifiers are assigned in discovery order, and within a file position ascends
+with document and node index. A diagnostic with no span sorts last, because it belongs
+to no position and putting it first would push the file it is about below it. Ties keep
+the order they were found in; the sort is stable. Rendering once is also what makes the
+warning count and the exit code cover the invocation rather than a fragment of it.
+
+**Diagnostics derived from a recovered view are withheld.** When `E0212` fires, nothing
+read off the repaired graph is reported at all — see D1.8, which owns the rule and the
+exact list.
 
 ---
 
@@ -636,7 +760,8 @@ Recorded, not decided. Each needs an explicit answer before the pass that depend
   operator: `<<: *alias` stays document-local and `<<: ../peer/Base` crosses files. D1.6 gains `!ref` as a legal merge source, and
   **D1.8's cycle rule spans files** — one inheritance graph, one cycle rule, so a
   cycle formed half by `<<` and half by `!ref` is still `E0212`. This requires a
-  normative total file order (canonicalized-path lexicographic); without one,
+  normative total file order (root-relative path, compared by component — D6.2, which
+  corrects both halves of the parenthesis this line first carried); without one,
   `readdir` order decides which back edge recovery drops, and therefore which
   *other* diagnostics get reported. **Written up as §6 (D4) and §8 (D6.2).**
 * ~~**There is no closed cross-file inheritance.**~~ **Answered: the header import
@@ -649,7 +774,10 @@ Recorded, not decided. Each needs an explicit answer before the pass that depend
   closed extension. **The file boundary is crossed by the import, not by the
   operation**, which is why D2.6 survives verbatim rather than being relaxed. See D4.4
   for the operation's side and D6.7 for the import's.
-* **`W0302` inconsistent inheritance order.** Deferred, not rejected. Two ancestors
+* **`W0302` inconsistent inheritance order.** Deferred, not rejected, and **not
+  allocated**: the spelling is a label for this discussion and `W0302` is not a code the
+  compiler knows, so a project cannot configure it and a reader should not go looking for
+  it in §4. Two ancestors
   that appear in one relative order along one inheritance path and in the opposite
   order along another have no consistent linearisation — this is exactly the
   monotonicity failure Python 2's MRO had, and D1.2 resolves it silently by written
@@ -678,8 +806,23 @@ Recorded, not decided. Each needs an explicit answer before the pass that depend
 * **A merge tag on a non-scalar key has no diagnostic.** D1.1 says a merge key is a
   *scalar* tagged `!!merge`, so `!!merge [k]: 1` is correctly not a merge key — but
   it then becomes an ordinary non-scalar key, which duplicate detection also skips,
-  so two of them in one mapping are silent. Needs either `E0211` or a new code.
-  **Needs an answer before `link`.**
+  so two of them in one mapping are silent. **`link` shipped and this was not answered,
+  so it is restated here as a known gap rather than as a pending decision**, which is
+  the honest form: the deadline the item set for itself has passed, and pretending
+  otherwise would make every other "needs an answer before" line in this section
+  unreadable as a commitment.
+
+  What is *known* is that the current behaviour is not a decision anyone made. Two
+  `!!merge [k]: 1` entries in one mapping parse, are counted as neither merge keys nor
+  comparable ordinary keys, and produce nothing — no `E0210`, no `E0110`, no `E0211`.
+  What is *not* known is which of two answers is right, and they are genuinely
+  different: `E0211` reads the tag as a mistaken merge and complains about the source,
+  which is wrong if the author meant a complex key; a new code reads it as a construct
+  the language declines to give meaning to, which needs a number and therefore a
+  reservation argument of D7.4's kind. **Deciding it needs a case, and the corpus has
+  none** — no fixture writes a tagged non-scalar key, because nobody has written one.
+  Until one appears, the gap is recorded, bounded (it can only ever be silence, never a
+  wrong graph, since a non-merge key is absorbed as data) and left open.
 
 ---
 
@@ -713,15 +856,30 @@ declaration that this context intends to *modify* the target, and it is checked 
 (`E0217`). This is stated first because it is the one misreading that produces a
 silently wrong graph across an entire project.
 
-**The operator set is closed at exactly these three.** There is no fourth operator and
-none will be added — no `!use`, no `!from`, no `A extends B from C`. This is a
-specification of the language, not a description of what happens to be implemented, so
-a later reader finding a case the three do not cover should not read that as a gap
-awaiting a fourth spelling. Every remaining question about reach — how a definition in
-another file becomes available at all — is answered by the **path** (D4.12), which is a
-property of the *name*, not of the operators. Keeping the operator set closed is what
-makes the table above exhaustive and therefore learnable: three spellings, three blast
-radii, and nothing else to check.
+**The set of *inheritance operators* is closed at exactly these three.** There is no
+fourth — no `!use`, no `!from`, no `A extends B from C`. This is a specification of the
+language, not a description of what happens to be implemented, so a later reader finding
+a case the three do not cover should not read that as a gap awaiting a fourth spelling.
+Every remaining question about reach — how a definition in another file becomes
+available at all — is answered by the **path** (D4.12), which is a property of the
+*name*, not of the operators. Keeping the operator set closed is what makes the table
+above exhaustive and therefore learnable: three spellings, three blast radii, and
+nothing else to check.
+
+**Say exactly what is closed, because the language has grown since and will again.**
+The claim is about the three *operators* and about nothing else. It is not a claim that
+the tag vocabulary is closed, and reading it as one would be a mistake this document
+invited: `!edge` shipped after the sentence was written, and it is a fourth **node
+kind**, not a fourth operator. The difference is the whole point of the sentence. An
+operator answers *what does writing this node change elsewhere*, and the three answers —
+nothing, nothing, and every P — exhaust the blast radii there are. A node kind answers
+*what is this node*, and `!edge` answers it with "a node whose content is what it
+connects" (D4.13): it inherits with the same three operators, is validated by the same
+checks, and adds no fourth thing to read a clause for. So the closure holds as stated
+and the correct statement is:
+
+> **Three inheritance operators, closed. Four node kinds — `!type`, `!node`, `!edge`
+> and untagged — not closed, and never claimed to be.**
 
 ### D4.1 — The three operations
 
@@ -802,8 +960,33 @@ diagnostic — D2.1's worst failure mode, reached by a typo. So the key is decid
 text and scalar style alone, and an `extends` entry whose operand is illegal is
 `E0211`, reported, not reinterpreted.
 
-*Consequence, as in D1.1:* an inheritance key and a literal `"extends"` key are
-different keys and may coexist in one mapping without a duplicate-key error.
+***Not* a consequence, and this is where D4.2 stops being D1.1 with a different
+spelling.** An earlier draft of this decision claimed the analogue of D1.1's coexistence
+rule — that an inheritance key and a literal `"extends"` key are different keys and may
+sit in one mapping. **They may not. `extends:` beside `"extends":` is `E0110`**, and the
+compiler raises it.
+
+The rules differ because the two keys are found by different means, and the escape does
+different work in each:
+
+* **`<<` is bucketed by *role* at parse time.** D1.1 classifies each entry as merge or
+  ordinary *before* uniqueness is tested, and the two buckets are counted separately —
+  which is what D1.7 needs, since a merge key must be bounded whatever its text (§4,
+  "Duplicate key identity"). A literal `"<<"` therefore never meets the real merge key
+  in the same table, and the coexistence falls out of the bucketing rather than being
+  granted.
+* **`extends` is an ordinary key.** No pass buckets it; the parser sees one mapping with
+  two entries whose key text is `extends`, compares texts as §4 says it must, and
+  reports a duplicate. It could not do otherwise without knowing the file's class, which
+  is precisely what §4 says the parser does not know.
+
+So the escape in D4.2 is narrower than D1.1's and is still worth having: it lets a
+`.yfy` write `"extends":` as a **field**, which is the case the paragraphs above argue
+for, and the field is then an ordinary key like any other. What it does not do is let
+the same mapping hold the operation and the field at once. That is a real restriction
+and it is stated rather than papered over — a node modelling another language's type
+system writes its `extends` field in a mapping that does not also extend something, or
+nests it, and neither is a hardship next to a duplicate-key error nobody can explain.
 
 **D1.7 needs no analogue.** `extends` is an ordinary key by text, so two `extends:`
 entries in one mapping are already `E0110`. D1.7 exists only because a merge key is
@@ -997,12 +1180,22 @@ author gets.
 
 ### D4.6 — The Alchemist's Guild
 
-One grimoire, one document, `namespace: guild::stock`. The Guildmaster wrote the top
-half; an apprentice writes the bottom half.
+**Two directories, because the difference this section teaches only exists across
+one.** The project is rooted at `guild/`. The Guild's formulary is
+`guild/stock/formulary.yfy`, `namespace: guild::stock`, `visibility: public`. The
+apprentice writes at their own bench, `guild/bench/apprentice.yfy`,
+`namespace: guild::bench`. That arrangement is not scene-setting:
+D6.4's default is `immutable`, and the gate it puts in front of the third operation
+**bites exactly on a reach that crosses a directory boundary**. Put both halves in one
+file and there is no gate at all — see the last part of this decision, which says so
+plainly, because a grimoire that claimed one would be teaching a defence the compiler
+does not provide.
 
 ```yaml
+# stock/formulary.yfy — the Guildmaster's
 --- !yfi/header
 namespace: guild::stock
+visibility: public
 ---
 water: &water
   solvent: spring-water
@@ -1014,15 +1207,16 @@ BasePotion: !type &BasePotion
   label: !!str            # required (D7.3): every potion must be labelled
 
 SleepingTonic: !node      # the Guild's own potion, on the shelf, brewed daily
-  extends: *BasePotion
+  extends: BasePotion
   label: Sleeping Tonic
 ```
 
 **Inclusion — the apprentice's tonic *contains* water.**
 
 ```yaml
+# bench/apprentice.yfy — the apprentice's
 MoonTonic: !node
-  <<: *water
+  <<: ../stock/water
   label: Moon Tonic
   volume_ml: !!int 100    # own key wins, before or after the clause (D1.2, D1.4)
 ```
@@ -1034,13 +1228,14 @@ is_a(MoonTonic) = { }                                       # a tonic is not a w
 ```
 
 The tonic has water in it. Water has no opinion about tonics, and nothing anywhere
-else in the Guild moved.
+else in the Guild moved. Note that the path crossed a directory and nothing had to be
+declared for it to: reading is what `public` grants, and inclusion only reads.
 
 **Extension — the apprentice defines a proper new potion.**
 
 ```yaml
 HealingDraught: !node
-  extends: *BasePotion
+  extends: ../stock/BasePotion
   label: Healing Draught
   reagent: sunroot
 ```
@@ -1056,11 +1251,16 @@ is_a(HealingDraught) = {BasePotion}
 A healing draught is a type of potion. The Guild's definition of a potion is exactly
 what it was that morning. The apprentice has changed one thing: their own draught.
 
+One warning is raised here, and it is the right one. `reagent` is declared by no
+ancestor, so it is `W0301` (§4) — an open-world model saying *this node carries data its
+family did not anticipate*, which is true, is usually fine, and is exactly what a
+field-name typo also looks like. Remember it; it is about to disappear.
+
 **Extended reference — the same entry, one `!ref` slipped in.**
 
 ```yaml
 HealingDraught: !node
-  extends: !ref BasePotion    # <- one token different
+  extends: !ref ../stock/BasePotion    # <- one token different
   label: Healing Draught
   reagent: sunroot
 ```
@@ -1080,26 +1280,83 @@ as a `BasePotion` tomorrow. The apprentice added a herb to their own recipe and
 reformulated the Guild.
 
 And their own draught looks **exactly right** — byte-identical resolved view to the
-safe spelling (D4.5). Nothing in the entry they are reading is wrong. The single local
-signal is `W0303` on the `label` line: their `label: Healing Draught` was contributed
-to `BasePotion`, where `label: !!str` already sits above it, so that part of the
-contribution is inert. A warning about the wrong key is the only thing standing
-between the apprentice and the entire Guild.
+safe spelling (D4.5). Nothing in the entry they are reading is wrong.
 
-That is why the two spellings must not look alike. `extends: *BasePotion`,
-`extends: BasePotion` and `extends: !ref BasePotion` all name the **same node**, and the
-last is a different operation. Since the path amendment the difference is a single tag
-on an otherwise identical line, which is a thinner defence than the old
-`ns::name/anchor` spelling gave — so the design stopped relying on the reader alone.
-`!ref` is now a **declaration of intent**, and the Guild answers it: `guild::stock` says
-nothing about mutability, so it is `immutable` (D6.4), and the apprentice's line is
-`E0217` before anyone has to notice the tag. The apprentice gets an error at the
-character they typed; the Guild gets its formulary back by writing nothing at all.
+**The warning set moves, and it moves the wrong way.** `W0301` on `reagent` is *gone*:
+the contribution installed `reagent` on `BasePotion`, so the base now declares it and
+every descendant of the base may carry it without comment. That is D4.11's second
+consequence arriving in the smallest possible example — a typo'd contribution does not
+add a junk key to one family, it makes the junk key legitimate vocabulary everywhere —
+and it means the dangerous spelling is *quieter* than the safe one about the key that
+actually crossed the boundary. What appears in its place is `W0303` on the `label` line:
+`label: Healing Draught` was contributed to `BasePotion`, where `label: !!str` already
+sits above it, so that part of the contribution is inert. A warning about a **different
+key** is the only local signal there is.
+
+That is why the two spellings must not look alike. `extends: ../stock/BasePotion`,
+`extends: !ref ../stock/BasePotion` and — after a header importing the formulary —
+`extends: *BasePotion` all name the **same node**, and the second is a different
+operation. Since the path amendment the
+difference is a single tag on an otherwise identical line, which is a thinner defence
+than the old `ns::name/anchor` spelling gave — so the design stopped relying on the
+reader alone. `!ref` is now a **declaration of intent**, and the Guild answers it:
+`guild::stock` says nothing about mutability, so it is `immutable` (D6.4), and the
+apprentice's line is
+
+```text
+error[E0217] `!ref ../stock/BasePotion` declares that this context intends to modify
+             the target, and the target may not be written from here
+  note: `guild/stock` is `immutable` and `guild/bench` is outside it; both axes
+        compose over the whole path from the root
+  note: drop the `!ref` if `../stock/BasePotion` is meant to be read rather than
+        changed; a plain path asks for nothing
+  note: <the definition, in the file that owns it>
+```
+
+— before anyone has to notice the tag. The apprentice gets an error at the character
+they typed; the Guild gets its formulary back by writing nothing at all. `W0303` still
+fires alongside it: the two are independent findings about one line, and a project that
+drops the tag stops seeing both.
+
+The blocking scope and the observer are named by their **qualified directory names**,
+which is D4.12's rule for both axes. The answer was composed over the whole path from
+the root (D6.5), so the scope that shut the reach out is frequently neither the target's
+own directory nor one the author has ever opened, and naming the target alone would
+point at a marking that is already correct.
 
 A Guild that *wants* its potions reopened writes `mutability: mutable` in its header,
 and is then back to `W0303` and a careful reader — which is the right place for that
 trade to be made, in the file that owns the family rather than in the file that
 extends it.
+
+#### Inside one file there is no gate, and `W0303` is the whole defence
+
+**A path naming a definition in its own file passes both gates unconditionally** — D4.12
+says so, and it is right to: a file can always see, and always write, what it wrote.
+`E0217` is a question about a *reach*, and a reach that never leaves the file has nobody
+to ask.
+
+So write the same three entries in one document, as an earlier version of this decision
+did, and the third one is **clean but for `W0303`**. `extends: !ref BasePotion` beside
+`BasePotion` in one grimoire compiles, reformulates every potion in it, and the compiler
+says one thing: `label` was contributed inertly. That is not a defect and it is not a
+hole to be closed — a file rewriting its own family is a file editing itself, which
+needs no permission and no ceremony. It is simply not what this decision is about, and
+claiming an `E0217` there would be claiming a defence that cannot fire.
+
+Stated as a rule, so the two halves are never confused again:
+
+| where the base lives | who may reopen it | what stops a mistake |
+|---|---|---|
+| the same file | that file, always | `W0303` alone |
+| another directory, no `mutability:` | nobody outside | `E0217`, before the contribution is computed |
+| another directory, `mutability: mutable` | anyone who can see it | `W0303` and a careful reader |
+
+*Fixtures:* `projects/check-ref-reach` writes the middle row — `patch/patch.yfy` reaches
+`../lib/Shared`, whose scope declares nothing, and earns `E0217`, and reaches
+`../mut/Open`, whose scope declares `mutability: mutable`, and does not.
+`projects/link-inert-contribution` and `projects/check-inert-inherited` write `W0303` at
+each of its two passes.
 
 ### D4.7 — Precedence, consolidated
 
@@ -1142,7 +1399,18 @@ the winner agrees with itself.
 
 So `E0221` compares the concrete node's effective value for a key against the
 **declared tag** at every abstract ancestor that declares it, and every such ancestor
-must be satisfied. `E0220` likewise asks whether each ancestor's required keys (D7.3)
+must be satisfied.
+
+**Its primary span is the effective value, and a note names the node it is reported
+against.** The value is the token whose text has to change, so it is the primary span —
+but that token is frequently **not the failing node's**. A shared `<<` mixin supplying a
+bad value is one node, written once and resolved into many, so every node that includes
+it fails at the same position. Without the note, two failures print byte for byte
+identically, neither says which node to fix, and a reader who edits the mixin to satisfy
+one may break the others. So the subject is stated with its own span, before the
+declaration that was violated and before the origin note that explains why the flattened
+node nevertheless looks consistent. `E0225` mirrors this for the same reason one level
+down (D4.13). `E0220` likewise asks whether each ancestor's required keys (D7.3)
 are supplied, by the node or by anything above it. The ancestors in question are those
 on the `is_a` axis — which extensions and extended references create and inclusions do
 not (D4.1). *No fixture yet.*
@@ -1402,19 +1670,73 @@ thing D1.8 refuses. Making the bare form file-local means a name never silently 
 resolving somewhere else when a sibling file is added. Reaching a sibling is one
 segment of typing, and that segment says which file.
 
+**The guarantee held against a new *file* and not against a new *line*, and `E0219`
+closes that.** The resolution order above is unchanged — a bare name finds a `!ref`
+binding of this document first, and a definition of this file only if there is no
+binding — but **a binding whose key is also a definition of the same file is `E0219`**:
+
+```text
+--- !type &Widget
+near: !!int 1
+--- !node &Use
+Widget: !ref other/Widget    # <- add this one line
+child: !node
+  extends: Widget            # <- unchanged; now names another directory
+```
+
+A binding outranks the file's own definitions, so one added line silently retargets
+every bare `Widget` already written. With matching keys on the two nodes there is no
+shape change, no value change and no diagnostic — the strongest form of the fault D1.8
+refuses, because nothing about the program says it happened.
+
+*Reversing the precedence was considered and rejected.* Making local definitions outrank
+bindings closes the retarget and opens a quieter hole: the binding would still be
+written, still carry the capability, and still be what `Widget.member` addresses
+through, while every bare `Widget` meant something else. **One spelling would denote two
+things depending on whether a `.` followed it** — the same fault wearing the opposite
+sign, and one no reader could see. So the precedence is left exactly where it is and
+**the ambiguity itself is refused**: there is no resolution order to learn, no line whose
+meaning depends on a line elsewhere, and the fix is a rename in one place — or `./Widget`,
+which is this directory's and is never captured by a binding.
+
+*Scope of the comparison.* A binding is a **document's**; a definition is a **file's**,
+which is what a bare path resolves against. So the comparison is **file-wide**: a binding
+in the second document of a file still makes one spelling mean two things in one file,
+and that is what the rule is about. **Imported names do not collide** — an import binds
+into the document's anchor table and is not a definition of this file, so a name that
+arrives by `imports:` and is also bound by a `!ref` is the ordinary two-state sequence
+`W0300` already governs (D2.3, D5.1, D6.7).
+
+Fixture: `projects/ref-binding-shadow`.
+
 **A segment naming both a directory and a file resolves to the directory.** The
 alternative would let adding a directory move a path that already worked, and a
 directory is the more public address of the two, being what a namespace is claimed on.
 Only Yamlfication source answers a path at all, so a `service.yaml` beside a
 `service.yfy` poses no question: base YAML has no addressable definitions (D6.6).
 
-**Where a plain scalar is read as a path.** In an operand of `<<:` or `extends:`, any
-scalar that parses as a path is one — a scalar there was `E0211` in every previous
-version of this language, so nothing that used to be legal changes meaning. Anywhere
-else, a scalar is **data** unless the path is *anchored* with `./` or `../`. This
-asymmetry is deliberate and it is the D6.6 argument applied one level down: a reading
-must not be decided by an incidental signal, so where a value has always been data, the
-reach has to say so.
+**Where a plain scalar is read as a path.** Three positions, not two:
+
+| position | read as a path when |
+|---|---|
+| operand of `<<:` or `extends:` | it parses as a path at all |
+| item of a `connections` some `!edge` reads (D4.13) | **always**: it is a reach or it is `E0213` |
+| anywhere else — a data edge | it parses **and** was written `./…` or `../…` |
+
+The asymmetry between the first row and the last is deliberate and it is the D6.6
+argument applied one level down: a reading must not be decided by an incidental signal,
+so where a value has always been data, the reach has to say so. A scalar under `<<:` or
+`extends:` was `E0211` in every previous version of this language, so reading it as a
+path cannot change the meaning of anything that used to be legal; a scalar in a data
+position has always been data, so `region: eu-west` stays a string no matter what the
+project happens to contain.
+
+The middle row is stronger than the first, and D4.13 owns the argument for it. In
+summary: the position is declared by the **language**, which is as explicit a signal as
+`extends:` is; there is no prefix in a sequence item for a quote to escape, so a quoted
+endpoint is still an endpoint and quoting escapes nothing there; and *which*
+`connections` this is is a question about the inheritance relation, not about the
+holder's tag.
 
 **A failed path is two codes, because it has two fixes.** `E0213` if the walk did not
 land — no such directory, no such peer, no such definition, `..` past the root, or not a
@@ -1437,10 +1759,42 @@ permitted.** There are two pairs and they are consulted in a fixed order:
 * `mutable` / `immutable` — may this be changed? Composed the same way. Failure is
   **`E0217`**, and it is asked only of a `!ref`.
 
-**Visibility is decided first.** A `!ref` into a scope that is both `private` and
-`immutable` is `E0216`, not `E0217`: reporting the mutability gate would send the author
-to change a keyword that is not what stopped them, and the `public` they actually need
-would still be missing when they came back.
+**Visibility is decided first, and the ordering is structural rather than conventional.**
+A `!ref` into a scope that is both `private` and `immutable` is `E0216`, not `E0217`:
+reporting the mutability gate would send the author to change a keyword that is not what
+stopped them, and the `public` they actually need would still be missing when they came
+back. But an ordering maintained by remembering to ask two questions in the right order
+is one that can be got wrong, so it is not maintained that way.
+
+**Visibility is decided *during path resolution*, in pass 4, before the final segment is
+sought and before any `.` member is addressed.** A path that lands in a scope the
+referencing scope cannot see **resolves to nothing**. It names no definition, addresses
+no member, contributes no `is_a` edge, installs nothing, and is an absent endpoint if it
+was one. `E0216` is the only answer it earns, and by pass 5 there is no reference left
+for `E0217` to be asked about — which is why `E0217` cannot be reported against a scope
+whose `visibility:` was the real obstacle, and why nothing downstream ever sees an
+invisible target.
+
+*Why the gate must stand in front of the lookup and not behind it.* Resolve first and
+the diagnostic is merely decorated: against one private `vault`, the three paths
+`vault/Secret.password`, `vault/Secret.nosuch` and `vault/NoSuchNode` earn three
+**distinguishable** answers — `E0216` naming the definition it found, `E0218` saying the
+node does not hold `nosuch`, `E0213` saying there is no definition called `NoSuchNode`.
+Between them an outsider enumerates a private scope's node names and each of those
+nodes' member names, which is precisely the access this decision says it has none of. A
+gate that only changes the wording of a refusal is not a gate. So the answer's **shape
+does not vary** with whether the node exists or the member exists; only the path the
+author wrote varies. Fixture: `projects/private-opacity`.
+
+**`E0216`'s note names the blocking and observer scopes by qualified directory name, and
+carries no source location.** Every other note in this document points at something the
+author can read. That one would point at a `file:line:col` *inside the scope the gate
+just refused*, which is the disclosure the gate exists to prevent — one span, and the
+outsider knows the private file's name and how long it is. Naming the two scopes
+discloses nothing, and this is provable rather than judged: every possible blocker lies
+strictly between the root — which encloses every observer and therefore never blocks —
+and the landing, so it is a directory the author named in the path or an ancestor of
+one. It is a directory they already wrote.
 
 **If B is private and outside A's scope, A has no access to B at all** — not its
 members, not its public surface, not its name. **A private B in A's own scope is
@@ -1448,7 +1802,9 @@ entirely ordinary**: privacy is a boundary against the outside, not secrecy from
 siblings, and a scope is open to an observer sitting inside it (D6.5).
 
 **A path naming a definition in its own file passes both gates unconditionally.** A file
-can always see, and always write, what it wrote.
+can always see, and always write, what it wrote. This is the reason D4.6 needs two
+directories to teach `E0217` at all: a grimoire that reopens its own family is a file
+editing itself, and there is nobody to ask.
 
 #### `!ref` is a mutation declaration, and mutability is checked at compile time
 
@@ -1670,7 +2026,398 @@ a private scope (`E0216`), a `!ref` into a visible but `immutable` scope (`E0217
 `!ref` into a `public mutable` one, and a `!ref` into a scope that is shut on both axes,
 which is what fixes the order of the two checks. `projects/link-ref-binding` writes the
 binding, the chained member, a missing member (`E0218`), and the directory-beats-file
-tie-break.
+tie-break; `projects/ref-binding-shadow` writes the binding that shadows a definition of
+its own file (`E0219`); and `projects/private-opacity` writes the three paths into one
+private scope that must not be told apart.
+
+### D4.13 — `!edge`
+
+**An edge is a node whose content is what it connects.** It carries a tag, `!edge`; it
+has identity; it is addressable by the path syntax; it inherits with the same three
+operators; it is validated by the same checks; it is emitted. There is no second
+construct here and no second set of rules. This decision names the **two members the
+language owns on such a node** and says what they mean, and that is the whole of it.
+
+| member | is | absent or malformed |
+|---|---|---|
+| `connections` | a **sequence** of the nodes the edge relates, in written order | none at all, or an unsatisfied declaration: `E0223`. Not a sequence: `E0224` |
+| `definition` | optional. A **mapping** of *handles*: a name for a position in `connections` | not a mapping: `E0224`. A handle naming no position: `E0225` |
+
+Both are read from the node's **resolved** view, not from its own keys, so an edge that
+inherits its connections from a base has them. That is not a rule about edges; it is
+what extension already means (D4.7), arriving at the right answer with nothing added.
+They are read **independently**: an edge may inherit `connections` from one base and
+`definition` from another, or write one and inherit the other, because each is a member
+and each is resolved as a member. Nothing couples them but the check that a handle names
+a position of the sequence the *same node* ends up holding — which is what `E0225`'s
+inherited-`definition` note exists for.
+
+**`connections` is a sequence, so an edge is n-ary.** A three-way relation is one edge,
+never three binary ones, and nothing anywhere assumes two endpoints. "These three
+services share an on-call rotation" is one fact, and encoding it as three pairwise edges
+is a lie about its shape that no query can undo.
+
+**An edge may be an endpoint of another edge**, because an edge is a node and a node may
+be an endpoint. That is how a relation over relations is written and it is intended. It
+follows that the **connection graph may cycle** — only *inheritance* cycles are illegal
+(D4.10) — so every traversal over it carries a visited set, exactly as §0 requires of
+every traversal in this system.
+
+**Everything else on an edge is an ordinary member.** "A node whose content is what it
+connects" says what makes a node an edge, not what a node may hold. An edge sitting
+between two nodes and carrying its own members is **middleware**, and it is reachable
+here precisely because nothing precludes it: the members are members, the validation is
+D7.3's, and no feature had to be added to allow it.
+
+**`!edge` is concrete, exactly as `!node` is** (D7.1): it is emitted. **There is no tag
+for an abstract edge and none is needed.** The abstract counterpart of a concrete node is
+whatever the author wrote — a `!type`, an untagged mixin, or nothing at all — and a
+family of edges is a `!type` that declares `connections`. D7.2 is untouched: no rule says
+which kinds may inherit from which.
+
+#### `connections` is not a reserved word
+
+This is the first thing to get right, because the obvious reading of the table above is
+wrong in both directions.
+
+**The two names are owned *on an edge*, not globally.** A sequence item under
+`connections` is a **reach position** — read as a path whatever its scalar style, with no
+anchoring prefix required, and quoting escapes nothing there — **iff the node holding the
+key is an `!edge`, or is a node some `!edge` reads that member from.** Everywhere else
+`connections` is an ordinary member name and its items are ordinary values.
+
+*Why it cannot be a question about the holder's tag*, in either direction:
+
+* **Narrow it to `!edge` and inheritance breaks.** An edge inherits `connections` from an
+  **untagged mixin** — D7.1's ordinary form, which carries no tag saying so — or from a
+  `!node`, or from a `!type` family, or through a `<<`. Reading those items as data
+  leaves every one of them resolved to nothing, and the edge relates nobody with no
+  diagnostic to say why.
+* **Widen it to `!type` and the name is reserved across the language.** Every `!type` in
+  every project would have a reserved member called `connections`, **with no escape**.
+  Quoting cannot be the escape, because quoting has exactly one job in this language and
+  it is not this one: it escapes a member-name **prefix** (D4.12), so `"pub literal"` is
+  a member called `pub literal`. It has never been a way to say *this item is data*, and
+  a reach position is decided by the position rather than by the style. So
+  `["eth0", "eth1"]` would be two unresolved paths with nothing the author could write
+  instead. A router type listing its interfaces is not an exotic case.
+
+**Reach-ness belongs to the consumer.** A `connections` member holds an edge's endpoints
+exactly when an `!edge` ends up holding it, which is a question about the **inheritance
+relation** and is answered from the relation. The set is the **reverse closure of D4.7's
+contribution edges, beginning at every `!edge`**: for each clause, an operand's target
+contributes to the clause's owner (`<<`, `extends`, and `extends: !ref`), and for
+`extends: !ref` the owner additionally contributes `own(owner)` to the target — which is
+tier 5, the reversed edge, and it is followed too, because a base that an extended
+reference installs keys onto is a node an edge reads keys from. Transitively, to
+fixpoint.
+
+Two consequences, both stated because both are load-bearing:
+
+1. **An `!edge` inheriting `connections` from an untagged base, a `!node` base, a `!type`
+   base or a `<<` mixin relates that base's endpoints.** No tag anywhere says "these
+   items are nodes"; the relation says it.
+2. **A node no `!edge` inherits from holds `connections` as an ordinary member.**
+
+   ```yaml
+   Router: !type &Router
+     pub connections: ["eth0", "eth1"]     # legal, silent, two strings
+   ```
+
+   Nothing is reserved about it, nothing is resolved from it, and nothing is reported.
+
+*Fixtures:* `projects/edge-mixin` writes three of the four bases — untagged, `!node`,
+and a `<<` inclusion of an untagged mixin; `projects/edge-extends` writes the fourth, a
+`!type` family; and `projects/edge-not-a-reach` writes the `!type &Router` above and a
+`!node` that also has a `definition` member holding prose.
+
+#### The pass runs twice, and that is sound
+
+Deciding the set above needs the inheritance clauses; a clause operand may itself be a
+path; resolving paths is what the reference pass does. So **pass 4 resolves every
+reference twice**: once as a silent **probe**, with no `connections` item read as a reach
+and nothing reported, whose only consumer is the clause collection the relation is
+derived from; then once for real, with the answer, raising the diagnostics.
+
+The second run is not a re-decision of the first. **No clause operand's meaning depends
+on the set** — the set decides exactly one position, the sequence item, and no clause
+operand is ever in it — so the two runs produce the *same clauses*, and only the third
+row of the path table moves between them. That is why one silent pass and one reporting
+pass is a fixpoint reached in two steps rather than an iteration with a termination
+argument owed. Withholding the probe's diagnostics is required for the same reason: they
+are the real run's, and reporting them twice would double every `E0213` in the project.
+
+#### Positions are what is written
+
+**`connections` writes N positions, where N is the length of the sequence as written.**
+An item that resolves to nothing is `E0213` — the ordinary unresolved-path error, because
+a `connections` item is a reach and a reach that names nothing is the same failure a
+clause operand naming nothing is — and it **contributes no endpoint**. It does **not**
+renumber the items after it, and it does **not** reduce N.
+
+A handle is checked against **N, the written count**. A handle is matched to an endpoint
+by **written position**. A handle naming a position whose item failed therefore binds to
+nothing and answers `None`; it does not quietly acquire the next surviving endpoint.
+
+```yaml
+--- !edge &Gapped
+pub connections: [Alpha, Nope, Gamma]
+pub definition:
+  first: 0
+  second: 1
+  third: 2
+```
+
+Exactly one diagnostic: `E0213` for `Nope`. `first` names `Alpha`. `second` names
+nothing. `third` names `Gamma`. `third: 2` is legal because the sequence writes three
+positions, not because two of them resolved.
+
+*Why written and not surviving.* The alternative — compact the sequence, renumber what is
+left — makes **one bad item silently move every handle after it**, so a typo in an
+endpoint changes what `target` means without saying so, and the author reading `target: 1`
+against a three-item list has no way to know. One fault costs one diagnostic and moves
+nothing. The same rule is what lets a *filtered* read be honest: an endpoint an observer
+may not see is absent from the result and the positions beside it are unchanged, so a
+gated walk and an ungated one agree about which position is which.
+
+#### What may stand as an endpoint
+
+Four forms, and the fourth is a failure rather than a form:
+
+| written | names |
+|---|---|
+| a **path** — `Alpha`, `../peer/Alpha`, `Alpha.tls` | what the path resolves to (D4.12). Unresolvable is `E0213` |
+| an **alias** — `*Alpha` | whatever the alias binds to, document-locally as §2 says |
+| an **inline collection** — `{host: localhost}`, `[1, 2]` | itself. A node like any other; it simply has no name to be addressed by |
+| any other **plain scalar** — `7`, `not-a-def` | nothing, and it is `E0213` |
+
+Two asymmetries in that table are real and are recorded rather than smoothed over,
+because a second implementation would otherwise have to guess:
+
+* **An alias may name an anchored scalar, and that scalar becomes an endpoint.** A
+  *path* may not — D6.1 makes only an anchored **collection** addressable, so
+  `connections: [limit]` against `&limit 30` is `E0213` — but `connections: [*limit]` is
+  accepted and relates the edge to a value. The two spellings answer different questions
+  (a path walks the definition table, an alias reads the arena), and the endpoint rule
+  follows each spelling rather than imposing a third answer over both.
+* **The `connections` member must *be* a sequence; an alias to one is `E0224`.**
+  `connections: *Endpoints`, where `&Endpoints` is a perfectly good sequence, is the
+  wrong shape. Aliases are dereferenced for an **item** and not for the member's value,
+  so an edge either writes its sequence or **inherits the member** whole (D1.5): the way
+  to share endpoints is a base that holds `connections`, reached by `extends` or `<<`,
+  which is exactly what `projects/edge-mixin` writes. That keeps `connections` one member
+  rather than one indirection, and it keeps the endpoint list somewhere the resolved view
+  can see it.
+
+#### A position has one spelling
+
+A handle's value is written **canonical decimal**: ASCII digits, no sign, no padding, no
+surrounding white space, and no leading zero unless the value is `0`. `" 0 "`, `"+0"` and
+`"00"` are each `E0225`.
+
+Leniency here buys nothing and costs the one thing it always costs. A handle's value is
+written by the author, beside the sequence it indexes, in a file this language owns;
+there is no wire format to be tolerant of and no producer to accommodate. Accepting
+several spellings of one position means two `definition` mappings can differ textually
+and not at all, which is a thing a reviewer must then know is a non-difference.
+
+#### A handle may not take an owned name
+
+`connections` or `definition` written as a handle is `E0225`. The two names are the
+language's on this node, and a handle that took one would be a name for a position that
+also names a member, in a mapping whose whole job is to name positions.
+
+#### `E0225`'s shape
+
+Three conditions, one code: **not a position**, **past the end**, **an owned name**. They
+share a code because they share a fix — the handle's value, or the handle's name — and
+because a reader who has learned "a handle names a position in `connections`" has learned
+all three at once.
+
+* **The primary span is the handle's value**, which is the token that must change.
+* **The message names its subject** — the edge the handle failed against — and not only
+  the handle.
+* **When `definition` was inherited, a note points at the subject and names the origin**,
+  mirroring `E0221`'s treatment of an effective value that is not the failing node's.
+
+The last two are one requirement seen twice. A `definition` is a member like any other,
+so a family may declare its handles once and be extended by several edges that each
+narrow `connections`; the primary span is then the base's line, which is **correct for
+every edge of the family that reads the sequence whole**. Without the subject in the
+message and the origin in a note, three edges produce three byte-identical errors on one
+line that is not wrong, and none of them says which node to fix.
+
+**Two handles naming one position is not an error.** The mapping is **many-to-one on
+purpose**: a self-loop is written `from: 0` and `to: 0` over a single endpoint, and both
+of its ends really are the same node. Where an index of endpoints has to carry *a* name,
+the **first** handle naming a position labels it, so the index does not silently depend on
+which handle was written last; the rest are not lost, because every handle is kept on the
+edge and a lookup by handle reads that list.
+
+#### `E0223` and `E0224` are two codes because they have two fixes
+
+* **`E0223` — the edge relates nothing.** Either there is no `connections` in the resolved
+  view at all, or there is one whose value is empty or null: an **unsatisfied
+  declaration**, `pub connections:` written in a base and never supplied by the concrete
+  edge. Both relate nothing, both have the same fix — *write the endpoints* — and the
+  second earns a note at the declaration so the author is not sent to a line that is
+  correct for every edge that does supply them.
+* **`E0224` — the wrong shape.** A `connections` that is neither a sequence nor null, or a
+  `definition` that is not a mapping. The fix is the value's shape, which is a different
+  thing to look at.
+
+Answering an unsatisfied declaration with `E0224` would send the author looking for a
+sequence they never wrote, which is why the empty and null spellings are `E0223`'s: a
+tagged-empty declaration parses to an empty scalar and a bare one to plain null, and the
+two are one statement (D7.3). The spellings that count are the **plain** ones the core
+schema resolves to null — the empty scalar, `~`, `null`, `Null` and `NULL` — and only
+plain: a quoted `"null"` is the string, and a string is not a sequence, so it is `E0224`
+like any other wrong shape.
+
+**`connections: []` is a legal degenerate edge and is neither.** A relation with no
+endpoints *yet* is a shape, not a mistake — it is still an `!edge`, still addressable,
+still emitted. An edge with no `connections` **member** is the mistake.
+
+**A tag that means nothing is worse than one that does not exist**, which is the whole
+argument for `E0223` having a code at all. `!edge` on a node with no endpoints would
+otherwise be a decorative tag: it would classify, it would print, and it would be consumed
+by nothing.
+
+#### `!ref` on an endpoint
+
+`!ref` on a `connections` item is **the same declaration of intent it is anywhere else**
+(D4.3). It is legal wherever a path is, it says that this context intends to modify the
+target, and it is checked as one: the target's scope must be writable from here or the
+item is `E0217`.
+
+**The flag is kept in the image.** An endpoint the edge declared it intends to modify and
+an endpoint it merely relates are two different claims, and an image that recorded them
+alike would say two endpoints are the same when the compiler had just reported that they
+are not. So a connection record carries its `capability`, and *which endpoints does this
+edge intend to modify* is a question the compiled graph can answer.
+
+What `!ref` does **not** do here is contribute keys. `extends: !ref P` installs `own(A)`
+on P and is the only spelling that does (D4.5); a `!ref` in any other position — including
+this one — declares the dependency and the intent and installs nothing, so `E0214` and
+`W0303` have exactly the inputs they had before.
+
+*Fixture:* `projects/edge-capability`, whose edge relates one node in an `immutable` peer
+directory with `!ref` (`E0217`) and one in its own scope without.
+
+#### The one place this is currently silent, stated rather than hidden
+
+**A `connections` inherited from a *base YAML* file relates nothing, and says nothing.**
+`.yaml` is data, not language (D6.6): its scalars are never read as paths, its anchors
+are not addressable, and no pass resolves anything in it. So an `!edge` that includes or
+extends a `.yaml` mapping holding `connections: [Alpha]` ends up with the member — the
+resolved view is composed across file classes, because `<<` is YAML's and is governed in
+both — and with **no endpoints**, because none of its items was ever a reach. There is no
+`E0223`, because the member is present and is a sequence; there is no `E0213`, because no
+path was written where the compiler was looking.
+
+That is a **silent** answer to a question the author thinks they asked, which is the
+failure mode D2.1 names as the worst this system has, and it is recorded here as a known
+gap rather than argued into a feature. What is *not* in doubt is the rule it follows
+from: a base YAML file declares nothing and is reached by import alone, so it cannot
+carry an edge's endpoints any more than it can carry a canonical name. The endpoints
+belong in a `.yfy`, where a path means something. The gap is that saying so is left to
+this paragraph instead of to a diagnostic.
+
+#### The two owned members are never data edges
+
+One written relationship, one record. Everything under `connections` and `definition` is
+the **language's**, on both sides, and none of it is also read as a member naming a node:
+
+* a `connections` **item** is a `Connection` record and nothing else. An alias standing
+  there is an endpoint, not an endpoint *and* a data edge — which is a real hazard rather
+  than a hypothetical, because a data edge leaves the *collection* a value sits in, and
+  for a sequence element that is the sequence rather than the edge node, so a duplicate is
+  invisible to any check made on the edge's own run;
+* a **wrongly-shaped `connections`** records no relationship at all. `connections: *Mixin`
+  is `E0224` and relates nothing; turning the operand into a data edge would put in the
+  image the relationship the compiler had just refused;
+* a **handle's value is a position**, so `owner: ./Alpha` is `E0225` and is *not* also a
+  member of the edge that names `Alpha`. It indexes a sequence; it never names a node.
+
+**And the two names are never `W0301`.** They are written by the *language*, not by the
+family, so an edge extending any abstract family that does not itself declare them is not
+warned about for writing the two members its tag requires it to write. Without the
+exemption the compiler reports its own vocabulary as a misspelled field.
+
+#### Visibility, in both directions
+
+An edge's endpoints are gated by the `connections` **member**, which is a member like any
+other and is therefore private by default (D4.12). Two accessors exist and both are
+needed:
+
+* **`connections_readable_from(observer)`** — the endpoints an observer may see. Two
+  gates, both already written and neither restated: the `connections` member must be
+  readable from there, and the endpoint must be a node that observer can see at all.
+  There is no third predicate. **Filtered as it walks**, so an endpoint the observer may
+  not see is absent by *shape* rather than present as a hole — and **positions never
+  renumber**, so a handle still answers over the written positions and a filtered result
+  never moves the endpoints beside the one it dropped.
+* **`incident_edges_visible_from(observer)`** — *what relates this node*, gated. It must
+  exist, because "what relates this public node", asked without a gate, hands the asker a
+  **private** edge and hands it to them by name. It is the same two predicates read from
+  the other end: the edge must be a node this observer can see, **and** the edge's
+  `connections` must be readable from there — because **an edge whose endpoints are
+  undisclosed has not disclosed that this node is one of them.**
+
+*Why both gates, when in a clean project one implies the other.* In a project that raised
+no `E0216`, the member gate is the one that bites and the node gate can never fire behind
+it: `E0216` forbids an edge from naming a target its own scope cannot see, so every closed
+scope on an endpoint's path encloses the edge's scope, and the member gate opens either
+because the observer sits inside the edge's scope — in which case it sits inside every
+closed scope above it — or because the edge's scope is reachable from the root, in which
+case no closed scope but the root is on the endpoint's path either. The node gate is kept
+for the case where that premise is **false**: a project that raised `E0216` still emits,
+because only a *cycle* refuses emission (D1.8), and a broken project must not become the
+way to read what a scope declined to publish.
+
+*Fixtures:* `projects/edge-visibility` writes a `pub connections`, a bare one and a
+private edge, read from a peer scope in both directions;
+`projects/edge-invisible-connection` is the `E0216` case, where the image is asked the
+question the compiler refused and gives the same answer.
+
+#### Extending an edge
+
+`connections` is **one member**, absorbed by the ordinary left-biased, shallow rule (D1.5,
+D4.7). A child either restates the sequence whole or inherits it whole. **Extension never
+appends endpoints**, and the operators are untouched — there is no `!edge`-specific
+composition rule, because inventing one would make one member of one node kind obey a
+merge law nothing else in the language obeys.
+
+That is also why `E0223`, `E0224` and `E0225` are `check`'s and not `link`'s. Pass 4 has
+resolved every path and knows what each item names, but only pass 5 knows **which
+`connections` a node ends up holding**; reporting `E0223` against `own(A)` would fire on
+every concrete edge of a family that declares its endpoints once in the base.
+
+#### Fixtures
+
+* `projects/edge-binary` — the ordinary case, and an edge carrying its own member.
+* `projects/edge-nary` — three endpoints in one edge, an edge over an edge, and
+  `connections: []`.
+* `projects/edge-handles` — handles, and the many-to-one self-loop.
+* `projects/edge-positions` — the gapped sequence and its worked example, an inline
+  endpoint, the three near-misses of a position's one spelling, a handle taking an owned
+  name, an inherited `definition` narrowed by a concrete edge, an unsatisfied inherited
+  declaration, and a handle whose value looks like a path.
+* `projects/edge-errors` — `E0223`, both shapes of `E0224`, two conditions of `E0225`,
+  and an endpoint naming nothing.
+* `projects/edge-extends` — an abstract edge family as a `!type`, restating and inheriting
+  `connections`, and the `W0301` exemption.
+* `projects/edge-mixin` — endpoints inherited from an untagged base, a `!node` base and a
+  `<<`.
+* `projects/edge-not-a-reach` — `connections` as an ordinary member on nodes no edge reads.
+* `projects/edge-capability` — `!ref` on an endpoint, and `E0217`.
+* `projects/edge-visibility`, `projects/edge-invisible-connection` — the two gated walks.
+* `projects/tagged` — a **nested, anchorless** edge: `owns: !edge` as a member of `Api`,
+  relating `Api` to itself and to `Service`. Addressable by nothing, and a node all the
+  same.
+* `fixtures/valid/tags.yfy` — the corpus file, which writes `!edge &owned-by` with both
+  members.
+
 ---
 
 ## 7. Anchor state sequences
@@ -1742,7 +2489,9 @@ supersedes.
 
 Everything else about it is unchanged from D2.3. It stays a warning, because
 shadowing is valid YAML and is the intended way to express a name's evolution through
-a document. Its severity stays configurable per project (`--deny W0300`). It still
+a document. Its severity stays configurable per project — `--deny W0300`, or
+`severity = { W0300 = "error" }` under a `[diagnostics]` table, which is D2.3's spelling
+and is written out in full there. It still
 carries both spans, the new definition and the one it supersedes; that pairing is what
 makes the sequence readable in the terminal, and it is why a reader can tell state 1
 from state 2 in `shadow-three-times.yml` without counting lines.
@@ -1777,15 +2526,37 @@ file's anchors, not a compilation mode and no longer a precondition for reach.
 
 **`E0230` is a duplicate *definition*, not a duplicate namespace.** Several files
 contributing to one namespace is the ordinary arrangement — it is how a namespace is
-grown without one enormous file — and must not be an error. `E0230` is *defined* to
-fire when two files declare the **same canonical path**: one namespace, one name, two definitions,
-in two files. Within a document a repeated name is a state sequence with a defined last
-state (D5.2), and across two imports the order is authored in a header (D6.7); across
-two files in a namespace there is no authored order at all, so the winner would be
-decided by D6.2's path ranking, which is to say by a filename. A graph whose values
-depend on a filename is what D1.8 refuses, so this one is an error rather than a
-warning. *The wording in an earlier draft of this decision — "two files declaring the
-same namespace" — was wrong and would have outlawed the normal case.*
+grown without one enormous file — and must not be an error. Within a document a repeated
+name is a state sequence with a defined last state (D5.2), and across two imports the
+order is authored in a header (D6.7); across two files that answer to one address there
+is no authored order at all, so the winner would be decided by D6.2's path ranking, which
+is to say by a filename. A graph whose values depend on a filename is what D1.8 refuses,
+so this one is an error rather than a warning. *The wording in an earlier draft of this
+decision — "two files declaring the same namespace" — was wrong and would have outlawed
+the normal case.*
+
+**The condition is one *directory*, one name, one definition — not one namespace — and it
+applies whether or not a header is present.** A later draft said "the same canonical
+path", and that was the second wrong wording: it made the check conditional on a declared
+namespace, so two headerless files of one directory both defining `&Widget` would collide
+in fact and pass in silence. They are reached by one `./Widget` (D4.12) and only their
+filenames rank them, which is the identical fault. Making the rule depend on a header
+would let *adding* one change the graph while changing no definition, and would let
+removing one hide a collision.
+
+**Addressability and canonical identity are two questions.** A **canonical path** —
+`namespace/name` — exists only for a directory that claims a namespace, and it is the
+project's identity for a definition. **Addressability by file and by directory exists
+regardless**, because a path addresses a file or a directory and never a namespace
+(D4.12). A definition can therefore be reachable without being canonically named, and
+that is correct: a name is for identity, and a path is for arriving. For a file that
+*does* declare a namespace the two conditions coincide — a namespace is claimed by one
+directory and one only, which `discover` already enforces — so exactly one `E0230` is
+raised either way, and the directory reading is the one that is right in both cases.
+
+Fixtures: `projects/duplicate-namespace` for the declared case,
+`projects/headerless-collision` for the same collision in a directory that claims
+nothing.
 
 **Raised by the link pass.** What `discover` raises `E0230` for is the pair of
 *declaration* conflicts it can decide — two headers in one directory disagreeing about an
@@ -1813,13 +2584,44 @@ they live in a sibling tree: `projects/<name>/`, one directory per project.
 is `E0230`, `projects/inherited-header` and `projects/scope-matrix` are D6.4 and D6.5,
 and D6.7's are cited there.
 
-### D6.2 — Discovery order is normative: root-relative path, lexicographic
+### D6.2 — Discovery order is normative: root-relative path, compared by component
 
-Files are ordered by their **path relative to the project root, compared
-lexicographically**, and that order is part of the specification rather than an
-implementation detail. Canonicalization is used to establish file *identity* — so that
-two routes to one file are recognised as one file and read once — and **not** to
-establish order.
+Files are ordered by their **path relative to the project root, compared component by
+component**, and that order is part of the specification rather than an implementation
+detail. Canonicalization is used to establish file *identity* — so that two routes to one
+file are recognised as one file and read once — and **not** to establish order.
+
+**Component order is normative, and it is not byte order.** An earlier draft of this
+decision said "lexicographically", which reads as a comparison of the path's *text* and
+is a different order. Compare `a.yfy` with `a/b.yfy`:
+
+| comparison | first |
+|---|---|
+| **components** — `["a.yfy"]` against `["a", "b.yfy"]`, so `"a"` against `"a.yfy"` | `a/b.yfy` |
+| **bytes** — `.` is `0x2E` and `/` is `0x2F` | `a.yfy` |
+
+The two disagree, and they disagree in the ordinary case of a file beside a directory of
+the same stem. **Component order is what this specification means**, and it is what the
+compiler does.
+
+*Why the distinction is worth a table rather than a footnote.* File rank is the first
+element of D6.3's tuple, and D6.3 fixes **`E0212`'s primary span** — the diagnostic points
+at the minimum member of the strongly connected component under that order. So the two
+readings put the error on different lines of different files for the same cycle, which is
+observable, reproducible under each reading, and impossible to reconcile after the fact.
+An ordering rule that two implementers can read two ways is not an ordering rule; it is
+the `readdir` problem with extra steps, and the whole of this decision is that the
+`readdir` problem must not exist.
+
+*Why component order and not byte order.* Both are total and both are deterministic, so
+the choice is between two defensible answers and this one picks the one a reader already
+holds. A path is a sequence of names, not a string that happens to contain separators;
+comparing it as a string makes the separator character participate in the comparison, so
+the order depends on where `/` sits in the encoding relative to the characters people put
+in filenames — which is a fact about ASCII, not about the project. Component order also
+keeps a directory's contents contiguous with the directory, which is what makes the walk's
+own guarantee (parents before children) and the file rank agree instead of merely
+coinciding.
 
 *Why it has to be normative.* D1.8's recovery makes the inheritance graph acyclic by
 dropping back edges in a depth-first search in document order. Which edge is a back
@@ -1856,7 +2658,8 @@ question, and they are answered by different keys.
 (file rank, document index, node index)
 ```
 
-compared lexicographically — file rank being the position from D6.2, document index
+compared left to right, first difference deciding — file rank being the position from
+D6.2, document index
 the zero-based index of the document within its file (already carried on
 `AnchorDef.document`), and node index the arena position within the document. Within a
 single file this is exactly the order §1 and §2 already use, so no existing decision
@@ -1969,7 +2772,7 @@ A project holds two kinds of file, and the difference is semantic **and** syntac
 
 | class | extension | what the engine reads |
 |---|---|---|
-| **yfi source** | `.yfy` | the full language: the `//` comment and the two block forms (§10), a header, the three operations (§6), `!ref`, `!type` / `!node` (§9), namespaces, scope axes, member flags |
+| **yfi source** | `.yfy` | the full language: the `//` comment and the two block forms (§10), a header, the three operations (§6), `!ref`, `!type` / `!node` / `!edge` (§9, D4.13), namespaces, scope axes, member flags |
 | **base YAML** | `.yaml`, `.yml` | ordinary YAML. Objects and data the engine compiles or runs over |
 
 *The syntactic half arrived after the semantic one, and does not replace it.* When this
@@ -1982,7 +2785,8 @@ and that is the case the argument below is about.
 
 **In a base YAML file the operators are not interpreted.** `extends:` is an ordinary
 field with an ordinary string key. `!ref` is an unrecognised tag on a value, not a
-reference. `!type` and `!node` say nothing about abstractness or emission. There is no
+reference. `!type` and `!node` say nothing about abstractness or emission, `!edge` says
+nothing about relations, and `connections` is a field name like any other. There is no
 header, so the file declares no namespace and no scope axes. `<<` is the only construct
 that behaves the same in both classes, and only because it is not ours: it is YAML
 1.1's de-facto merge key, and §1 governs it in both file classes because §1's rules
@@ -2067,12 +2871,23 @@ name the header is the only place an *authored* order exists.
 ```yaml
 --- !yfi/header
 namespace: acme::web
-import:
+imports:
   - core/service.yfy        # definitions
   - vendor/defaults.yaml    # data
 ```
 
-`import:` is a flat sequence; each entry names one file, resolved relative to the
+**The key is `imports:`, plural**, and it is the only spelling. *An earlier draft of this
+decision wrote the example with `import:`, which is not a header key at all* — and the
+compiler answered the difference with silence, because an unrecognised header key is
+ignored rather than reported. A file that wrote `import:` therefore imported nothing,
+bound nothing, and then failed at every alias with `E0100 unknown anchor`: the wrong code,
+in the wrong place, about lines that were written correctly. **That an unknown header key
+is silent is itself a gap** — the header's key set is small, closed and entirely the
+language's, so a misspelling there has no legitimate reading the way a misspelled *member*
+does (`W0301`) — but it is a gap in the header and not in this decision, and no code is
+allocated for it here.
+
+`imports:` is a flat sequence; each entry names one file, resolved relative to the
 project root (D6.1). An entry naming a file outside the project, or naming nothing, is
 `E0240`. *The selective form — importing named definitions rather than a whole file —
 is not specified, because nothing yet needs it; the whole-file form is what the
@@ -2240,9 +3055,15 @@ reported where the fix is.
 * **`!type`** is **abstract**: inheritable, validated against, and **never emitted**
   as a model in the compiled output.
 * **`!node`** is **concrete**: emitted.
+* **`!edge`** is **concrete**: emitted, exactly as `!node` is. It is a fourth node kind
+  and not a third state of this axis — what it adds is D4.13's two members, not a new
+  answer to *abstract or concrete*. **There is no tag for an abstract edge and none is
+  needed**: the abstract counterpart of a concrete node is whatever the author wrote, so
+  a family of edges is a `!type` that declares `connections`, and an untagged mixin
+  carrying the member is one too.
 * **An untagged node is abstract.**
 
-The third is the one that needs an argument, and the corpus supplies it.
+The last is the one that needs an argument, and the corpus supplies it.
 `fixtures/merge/*` and `fixtures/cycles/merge-diamond.yml` are built out of untagged
 anchored mappings — `&base`, `&a`, `&b`, `&c` — that exist solely to be merged into
 something else. They are mixins. If untagged defaulted to concrete, every one of those
@@ -2514,11 +3335,19 @@ A file of **definitions**, in a **project** whose directory tree is its scope tr
 (D6.1, D6.4). It may open with a header document declaring its namespace, its two scope
 axes and its imports (D6.7); everything after that is definitions.
 
-A definition is a named node. `!type` is abstract and never emitted, `!node` is
-concrete and emitted, and an untagged node is abstract, which is what keeps an ordinary
-mixin from polluting the graph (D7.1). What a node declares about its members is written
-as a key, a tag and possibly a value — three states, of which the useful one is the
-tag with no value, meaning *required* (D7.3).
+A definition is a named node, and there are **four kinds of node** (D7.1, D4.13):
+
+| written | is |
+|---|---|
+| `!type` | abstract — inheritable, validated against, never emitted |
+| `!node` | concrete — emitted |
+| `!edge` | concrete — emitted. A node whose content is what it connects: `connections` names the nodes it relates, in written order and in any number, and `definition` names positions in that sequence so an endpoint can be addressed as `source` rather than as `0` |
+| untagged | abstract, which is what keeps an ordinary mixin from polluting the graph |
+
+There is no tag for an *abstract* edge and none is needed: a family of edges is a `!type`
+that declares `connections`, and an edge inherits it by the ordinary operators. What a
+node declares about its members is written as a key, a tag and possibly a value — three
+states, of which the useful one is the tag with no value, meaning *required* (D7.3).
 
 A member is anything nested inside something else, exactly as YAML nests — a `.yfy` is
 not a data store, and the file class is the whole of the discriminator (D4.12). A node's
@@ -2535,8 +3364,12 @@ on its name; both are opt-in and a bare member is private and immutable (D4.12).
 | `A` with `extends: P` | extension — A **is a** P | nothing |
 | `A` with `extends: !ref P` | extended reference — **every P** carries A | every P |
 
-The set is closed at three and no fourth will be added (§6). Two are safe and one
-changes the world, which is why they must not look alike.
+The set of **inheritance operators** is closed at three and no fourth will be added
+(§6). Two are safe and one changes the world, which is why they must not look alike.
+That closure is about the operators and about nothing else: the **node kinds** are not
+closed and were never claimed to be — `!edge` is a fourth one, added after the sentence
+was first written, and it inherits with these same three and adds no way to read a
+clause.
 
 `P` is a **path**, spelled the way a filesystem is spelled because the scope tree is the
 directory tree: `../shared/Service`, `peer/Service`, `Service`, `Service.tls.port`.
@@ -2552,6 +3385,27 @@ closed by default at both granularities, and both compose the same way — over 
 path from the root, never node-locally (D6.5). Failure to see is `E0216`; failure to
 write is `E0217`, and it is asked only of a `!ref`, which is the only construct that
 writes at compile time.
+
+**Visibility is asked first, and it is asked inside path resolution.** A path landing
+where the referencing scope cannot see resolves to **nothing** — no definition, no
+member, no `is_a` edge, no endpoint — so `E0216` is the only answer it can earn and its
+shape does not vary with whether the node or the member exists. That is what stops a
+refusal from becoming an oracle over a private scope's contents (D4.12).
+
+### Relations are nodes
+
+An `!edge` is a node whose content is what it connects (D4.13). `connections` is a
+sequence, so a relation is **n-ary** — three services sharing a rotation is one edge, not
+three — and an endpoint may itself be an edge, which is how a relation over relations is
+written. `definition` names positions in that sequence, many-to-one, which is how a
+self-loop is written. Positions are what is **written**: an endpoint that resolves to
+nothing costs one `E0213` and renumbers nothing beside it, and a filtered read leaves the
+same gap rather than closing it.
+
+`connections` is **not a reserved word**. It is a reach position on an `!edge` and on
+whatever an `!edge` reads it from, and an ordinary member name everywhere else — so an
+edge inherits its endpoints from an untagged mixin, and a `!type &Router` listing
+`["eth0", "eth1"]` is two strings and nothing else.
 
 ### `.yaml` is the other half, and is not this language
 
@@ -2570,7 +3424,17 @@ one thing shared is `<<`, because that is YAML's and not ours (§1).
 | 3 | `intern` | symbols, member names with their flags taken off, tags, documents, parents, scopes (D4.12, D7.1) |
 | 4 | `link` | the definition table, every path resolved, every clause validated, the stratified inheritance graph (D4.10, D4.11) |
 | 5 | `check` | cycles, resolved views in precedence order, the epistemic gate, declarations (D4.7, D4.12, D7.3) |
-| 6 | `emit` | the compiled image, and the point at which member gates are **applied** while walking |
+| 6 | `emit` | the compiled image: a node per resolved holder, each one's ancestor chain, an edge index in both directions over the three operators, data edges and every `!edge`'s connections (D4.13), each node's scope path — and the point at which member gates are **applied** while walking |
 
-Diagnostics accumulate at every pass; no pass stops at the first problem (§4). Pass 6 is
-not written, and is deliberately absent rather than stubbed.
+**All six passes are implemented.** *An earlier version of this line said pass 6 was "not
+written, and deliberately absent rather than stubbed"; that has not been true since
+`emit` shipped.* What remains true is the reason it was said: emission is **refused
+outright** when the inheritance graph held a cycle, so a recovered view never reaches
+output, and a refused image holds nothing rather than holding a repair (D1.8).
+
+Diagnostics accumulate at every pass; no pass stops at the first problem (§4). **Two
+passes raise none** — `intern` and `emit` — which is not the same as being absent: pass 3
+is where a member's flag prefix is taken off and a tag is classified against its file's
+class, and pass 6 is where a member's gate is applied. Severity is decided once, by the
+pass that raises the finding, and one report is rendered from one source map in position
+order across the whole invocation (§4).
