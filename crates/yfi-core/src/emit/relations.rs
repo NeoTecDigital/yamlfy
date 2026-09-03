@@ -129,10 +129,13 @@ fn connection_edges(checked: &Checked, out: &mut Vec<RawEdge>) {
 ///   [`EdgeKind::Connection`]. An alias standing there would otherwise be
 ///   recorded a second time as data, because it leaves the *sequence* rather
 ///   than the edge and so is invisible to a check on the edge's own run;
-/// * the `connections` **value** itself, for the shape that failed: an edge
-///   writing `connections: *Mixin` is `E0224` and relates nothing, and turning
-///   the operand into a data edge would put a relationship in the image that
-///   the compiler had just refused;
+/// * the `connections` **value** itself. An alias standing there is the
+///   sequence of endpoints — dereferenced for the value exactly as for an item
+///   — so recording it as data would say a second time, under a second kind,
+///   what the connection records already say. And when the value is the wrong
+///   shape it has earned `E0224` and relates nothing, so reading it as a member
+///   naming a node would put a relationship in the image that the compiler had
+///   just refused;
 /// * a `definition` **handle's value**, which is a position in a sequence.
 ///   `owner: *Team` names no position and is `E0225`; it is not also a member
 ///   of the edge that points at `Team`.

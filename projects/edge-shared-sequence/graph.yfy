@@ -1,0 +1,22 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::shared
+visibility: public
+imports: shared/pairs.yfy
+--- !node &Alpha
+pub port: 1
+--- !node &Beta
+pub port: 2
+# The member's **value** is an alias, and an alias is dereferenced here exactly
+# as it is for an item: `*Pair` names a sequence, so this edge relates what the
+# sequence names. Two edges share one endpoint list without either of them
+# extending the other.
+--- !edge &Aliased
+pub connections: *Pair
+pub definition:
+  from: 0
+  to: 1
+--- !edge &AlsoAliased
+pub connections: *Pair

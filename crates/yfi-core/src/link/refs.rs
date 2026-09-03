@@ -54,9 +54,12 @@
 //! The third row is not "a member called `connections`", which would reserve
 //! the name on every node in the language, and not "a member of an `!edge`"
 //! either, because an edge inherits the member from bases carrying no tag that
-//! says so. It is the set [`crate::edge::endpoint_holders`] names, derived from
-//! the inheritance clauses — and a clause operand may itself be a path this
-//! pass resolves, so the pass runs twice. [`probe`] resolves everything with no
+//! says so. It is the set [`crate::edge::endpoint_sequences`] names: the
+//! **sequences** an edge ends up reading, derived from the inheritance clauses
+//! and followed one step through an alias, so an item is an endpoint exactly
+//! when the sequence it sits in is one an edge reads — wherever that sequence
+//! is written. A clause operand may itself be a path this pass resolves, so the
+//! pass runs twice. [`probe`] resolves everything with no
 //! `connections` item read as a reach and reports nothing; `link` builds the
 //! clauses from it and calls [`resolve`] with the answer. No operand's meaning
 //! depends on the set, so only the third row moves between the two runs.
@@ -73,7 +76,6 @@ use super::keys::is_extends_key;
 use super::path::{self, Failure, Path, Space};
 use super::table::Table;
 use super::Ctx;
-use crate::edge;
 use crate::tags::TagKind;
 
 /// Which operator a reference is an operand of.
@@ -366,6 +368,14 @@ struct Site {
 /// The operand may be written directly or as an element of the flat sequence
 /// form, so one level of sequence is stepped through before the entry is found.
 /// A mapping **key** is never a path: it names a field.
+///
+/// `endpoints` is the set of **sequences** an `!edge` reads (D4.13), not the
+/// set of nodes holding the key, so an item is an endpoint exactly when the
+/// sequence it sits in is one an edge reads — whether the edge wrote the
+/// sequence, inherited it, or reached it through an alias. Only the sequence
+/// form is a reach position: a `connections` that is not one never enters the
+/// set, and is reported once as `E0224` rather than twice as a shape fault and
+/// a failed path.
 fn site(
     ctx: &Ctx,
     endpoints: &HashSet<(FileId, NodeId)>,
@@ -375,9 +385,16 @@ fn site(
     let loose = Site { role: RefRole::Data, binds: None, owner: None };
     let ast = ctx.ast(file)?;
     let Some(parent) = ctx.interned.parent_of(file, node) else { return Some(loose) };
-    let (holder, operand, direct) = match ast.items(parent) {
-        Some(_) => (ctx.interned.parent_of(file, parent)?, parent, false),
-        None => (parent, node, true),
+    let endpoint = endpoints.contains(&(file, parent));
+    let (holder, operand, direct) = match (ast.items(parent), ctx.interned.parent_of(file, parent))
+    {
+        // A sequence reached by an alias may be a document root, which no
+        // mapping wrote. It still holds endpoints, and it owns nothing: the
+        // reverse edge a `!ref` contributes lands on the context that declared
+        // the dependency, and here there is no such context to name.
+        (Some(_), None) => return endpoint.then(|| connection(None)),
+        (Some(_), Some(held)) => (held, parent, false),
+        (None, _) => (parent, node, true),
     };
     let Some(entries) = ast.entries(holder) else { return Some(loose) };
     let entry = entries.iter().find(|entry| entry.value == operand)?;
@@ -388,35 +405,16 @@ fn site(
     if is_extends_key(ast, entry.key) {
         return Some(Site { role: RefRole::Extension, binds: None, owner });
     }
-    if !direct && is_connections_key(ctx, endpoints, file, holder, entry.key) {
-        return Some(Site { role: RefRole::Connection, binds: None, owner });
+    if !direct && endpoint {
+        return Some(connection(owner));
     }
     let binds = direct.then(|| ast.scalar(entry.key).map(|key| key.value.clone())).flatten();
     Some(Site { role: RefRole::Data, binds, owner })
 }
 
-/// Whether `key` names a `connections` member some `!edge` reads (D4.13).
-///
-/// The holder is the edge itself or a node it inherits the member from, which
-/// is [`crate::edge::endpoint_holders`]' answer and not a tag test: an untagged
-/// mixin's `connections` is an edge's endpoints, and a `!type` no edge extends
-/// holds an ordinary member of that name.
-///
-/// Only the sequence form is a reach position, which is why the caller asks
-/// this for a sequence item alone: a `connections` that is not a sequence is
-/// reported once, as `E0224`, and not twice as a shape fault and a failed
-/// path.
-fn is_connections_key(
-    ctx: &Ctx,
-    endpoints: &HashSet<(FileId, NodeId)>,
-    file: FileId,
-    holder: NodeId,
-    key: NodeId,
-) -> bool {
-    let reads = edge::is_edge(ctx.interned, file, holder) || endpoints.contains(&(file, holder));
-    reads
-        && ctx.interned.key_of(file, key).and_then(|name| ctx.interned.symbols().resolve(name))
-            == Some(edge::CONNECTIONS)
+/// An item of a sequence some `!edge` reads: an endpoint of that edge.
+fn connection(owner: Option<NodeId>) -> Site {
+    Site { role: RefRole::Connection, binds: None, owner }
 }
 
 /// The diagnostic a failed resolution earns. Every failure is `E0213` — the

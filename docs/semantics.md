@@ -92,7 +92,13 @@ rule there is no way to store a literal `<<` key at all.
 *Consequence:* a merge key and a literal `"<<"` key are **different keys** and may
 coexist in one mapping without a duplicate-key error.
 
-Fixture: `fixtures/merge/quoted-merge-key-is-literal.yml`.
+*Consequence:* the rule says **scalar**, so a collection carrying the tag — `!!merge [k]:
+1` — is not a merge key. It is an ordinary complex key, and the tag on it means nothing;
+that is `E0111`, argued in §5. What it is *not* is `E0211`: nothing here was read as a
+merge, so there is no merge source to complain about.
+
+Fixtures: `fixtures/merge/quoted-merge-key-is-literal.yml`,
+`fixtures/merge/merge-tag-on-complex-key.yml`.
 Implemented: `yfi_syntax::is_merge_key`; `Entry::merge` on every mapping entry.
 
 ### D1.2 — Resolution order within one mapping
@@ -227,8 +233,8 @@ contributed key into the base; and the warning then reports the contribution as 
 *because the base already inherits it* — with a note pointing at the very line
 contributing it. Nothing an author could write would satisfy that, because the
 inheritance it names is the compiler's own repair. So once `E0212` has fired,
-**`E0220`, `E0221`, `W0301`, `E0223`, `E0224`, `E0225` and `check`'s half of `W0303` are
-all suppressed for that compilation.**
+**`E0220`, `E0221`, `W0301`, `E0223`, `E0224`, `E0225`, `check`'s half of `E0213` and
+`check`'s half of `W0303` are all suppressed for that compilation.**
 
 The line is drawn at *reads a resolved view*, not at *is a warning* or *is pass 5's*, so
 three things are deliberately outside it:
@@ -543,6 +549,7 @@ parsed and kept.
 | `E0104` | error | unterminated `<?--` block (D8.4) | parse |
 | `E0110` | error | duplicate mapping key | parse |
 | `E0110` | error | two keys naming one member (D8.5) | link |
+| `E0111` | error | `!!merge` on a non-scalar key (D1.1) | parse |
 | `E0120` | error | anchor name unrecoverable (D3.5) | parse |
 | `E0121` | error | anchor recovery out of order (D3.5) | parse |
 | `E0130` | error | alias crosses a document boundary (D2.6) | parse |
@@ -551,6 +558,7 @@ parsed and kept.
 | `E0211` | error | illegal merge source (D1.6) | link |
 | `E0212` | error | cyclic inheritance (D1.8, D4.10) | check |
 | `E0213` | error | path names nothing (D4.3, D4.12) | link |
+| `E0213` | error | an alias endpoint names a value, not a node (D4.13) | check |
 | `E0214` | error | conflicting extended references (D4.11) | link |
 | `E0215` | — | **retired, and never reused.** `!ref` into a file this file does not import | — |
 | `E0216` | error | path into a scope this scope cannot see (D4.12) | link |
@@ -598,6 +606,12 @@ about. A gate that only decorates a diagnostic is not a gate: with the lookup fi
 node names and each node's member names. Its sibling `E0217` stays in `check` because it
 is asked of a target that is already in view, which is exactly what makes the ordering
 of the two axes structural instead of conventional.
+
+**`E0213` is `link`'s with one exception.** An `!edge` endpoint written as an **alias**
+to an anchored *scalar* names a value rather than a node (D4.13), and that is `E0213` —
+the same fault a path naming the same anchor earns — but it is raised by `check`, because
+an alias is not a path and never became a reference: pass 4 never saw it. One code, two
+passes, over disjoint inputs, exactly as `W0303` is below.
 
 **`E0213` and `E0218` are two codes because the fixes are opposite.** `E0213` says the
 walk did not land — no such directory, no such peer, no such definition, or a `..` past
@@ -803,26 +817,38 @@ Recorded, not decided. Each needs an explicit answer before the pass that depend
   import requirement that first answered this — `E0215` — was retired when the path
   became the reach; it was the right instinct wearing the wrong mechanism, because it
   asked a *declaration* to guard something a *syntax* can guard.
-* **A merge tag on a non-scalar key has no diagnostic.** D1.1 says a merge key is a
-  *scalar* tagged `!!merge`, so `!!merge [k]: 1` is correctly not a merge key — but
-  it then becomes an ordinary non-scalar key, which duplicate detection also skips,
-  so two of them in one mapping are silent. **`link` shipped and this was not answered,
-  so it is restated here as a known gap rather than as a pending decision**, which is
-  the honest form: the deadline the item set for itself has passed, and pretending
-  otherwise would make every other "needs an answer before" line in this section
-  unreadable as a commitment.
+* ~~**A merge tag on a non-scalar key has no diagnostic.**~~ **Answered: `E0111`, and
+  the other half of it is answered the other way, on purpose.** The item asked one
+  question and there were two in it.
 
-  What is *known* is that the current behaviour is not a decision anyone made. Two
-  `!!merge [k]: 1` entries in one mapping parse, are counted as neither merge keys nor
-  comparable ordinary keys, and produce nothing — no `E0210`, no `E0110`, no `E0211`.
-  What is *not* known is which of two answers is right, and they are genuinely
-  different: `E0211` reads the tag as a mistaken merge and complains about the source,
-  which is wrong if the author meant a complex key; a new code reads it as a construct
-  the language declines to give meaning to, which needs a number and therefore a
-  reservation argument of D7.4's kind. **Deciding it needs a case, and the corpus has
-  none** — no fixture writes a tagged non-scalar key, because nobody has written one.
-  Until one appears, the gap is recorded, bounded (it can only ever be silence, never a
-  wrong graph, since a non-merge key is absorbed as data) and left open.
+  **The tag is diagnosed.** D1.1 says a merge key is a *scalar* tagged `!!merge`, so
+  `!!merge [k]: 1` is correctly not a merge key — and what it then becomes is an ordinary
+  complex key, with the tag classifying nothing, resolving nothing and consumed by
+  nothing. That is a **tag that means nothing**, which is the exact thing D7.4 refuses
+  for `!oneof` and D4.13 refuses for `!edge`: a reservation with no diagnostic behind it
+  is not a reservation, and a spelling that silently does nothing leaves the author
+  believing they wrote a merge. The two candidate answers the item recorded are still the
+  two candidates, and the second is the right one: `E0211` would read the tag as a
+  *mistaken merge* and complain about the operand, which is wrong if the author meant a
+  complex key, while a code of its own says only what is certainly true — the tag has no
+  meaning in this position — and is right under either reading of the intent. It is
+  `E0111`, next to `E0110` because it is the same concern at the same level: mapping keys,
+  decided by the parser with nothing resolved.
+
+  **The duplicate is not diagnosed, and that is now a decision rather than an omission.**
+  Two `!!merge [k]: 1` entries in one mapping are still not reported as duplicates — and
+  neither are two untagged `[j]: 3` entries, which is the tell: the silence never had
+  anything to do with the tag. Key identity in this language is a key's **scalar text**,
+  which is the only identity a parser holds; comparing complex keys needs resolved
+  values, and the parser has none. Reporting the tagged pair and not the untagged one
+  would make `!!merge` change what *duplicate* means. The rule is bounded — a non-merge
+  key is absorbed as data, so this can only ever be silence and never a wrong graph — and
+  it is **permanent** at this level: if complex-key identity is ever wanted it belongs to
+  a later pass that has values, not to `check_keys`.
+
+  *Fixture:* `fixtures/merge/merge-tag-on-complex-key.yml`, which writes both pairs and
+  earns exactly two diagnostics, one per tagged key. The item's own objection — "deciding
+  it needs a case, and the corpus has none" — was answered by writing the case.
 
 ---
 
@@ -2040,7 +2066,7 @@ language owns on such a node** and says what they mean, and that is the whole of
 
 | member | is | absent or malformed |
 |---|---|---|
-| `connections` | a **sequence** of the nodes the edge relates, in written order | none at all, or an unsatisfied declaration: `E0223`. Not a sequence: `E0224` |
+| `connections` | a **sequence** of the nodes the edge relates, in written order. An alias to one is dereferenced | none at all, an unsatisfied declaration, or written in base YAML: `E0223`. Not a sequence: `E0224` |
 | `definition` | optional. A **mapping** of *handles*: a name for a position in `connections` | not a mapping: `E0224`. A handle naming no position: `E0225` |
 
 Both are read from the node's **resolved** view, not from its own keys, so an edge that
@@ -2085,6 +2111,17 @@ wrong in both directions.
 anchoring prefix required, and quoting escapes nothing there — **iff the node holding the
 key is an `!edge`, or is a node some `!edge` reads that member from.** Everywhere else
 `connections` is an ordinary member name and its items are ordinary values.
+
+**What the compiler carries is the set of such *sequences*, not the set of holders.** The
+two would be the same set if the member's value were always written in place, and it is
+not: an alias standing there is dereferenced, so the items may be written in a file that
+holds no edge and names no `connections` at all. Reach-ness attaches to the sequence the
+edge ends up reading. One consequence is worth stating rather than discovering: a
+sequence an edge reads is a reach position **for every reader of it**, so an anchor
+aliased once as `connections` and once as an ordinary member has items that are nodes in
+both places. That is the same one-node-one-reading rule aliasing has everywhere in YAML,
+and it is the reason to write a shared endpoint list as a sequence that is only ever
+that.
 
 *Why it cannot be a question about the holder's tag*, in either direction:
 
@@ -2187,27 +2224,37 @@ Four forms, and the fourth is a failure rather than a form:
 | written | names |
 |---|---|
 | a **path** — `Alpha`, `../peer/Alpha`, `Alpha.tls` | what the path resolves to (D4.12). Unresolvable is `E0213` |
-| an **alias** — `*Alpha` | whatever the alias binds to, document-locally as §2 says |
+| an **alias** — `*Alpha` | the node it binds to, document-locally as §2 says. A binding to a scalar names no node and is `E0213` |
 | an **inline collection** — `{host: localhost}`, `[1, 2]` | itself. A node like any other; it simply has no name to be addressed by |
 | any other **plain scalar** — `7`, `not-a-def` | nothing, and it is `E0213` |
 
-Two asymmetries in that table are real and are recorded rather than smoothed over,
-because a second implementation would otherwise have to guess:
+**An endpoint is a node, and that is decided once for all three spellings.** D6.1 makes
+only an anchored **collection** addressable — an anchored scalar is a value, not a type
+— and an edge relates nodes, so `&limit 30` is not one of them however it is reached:
+`connections: [limit]` is `E0213` because the path names no definition, `connections:
+[*limit]` is `E0213` because the alias binds a value, and `connections: [7]` is `E0213`
+because a scalar written inline is not a node either. This used to be two answers to one
+question: the path spelling refused and the alias spelling accepted, on the reasoning
+that the two walk different structures — the definition table and the arena. They do,
+but *what may be related* is not a question about the walk, and two spellings of one
+question with two answers is exactly what a second implementation cannot reproduce.
 
-* **An alias may name an anchored scalar, and that scalar becomes an endpoint.** A
-  *path* may not — D6.1 makes only an anchored **collection** addressable, so
-  `connections: [limit]` against `&limit 30` is `E0213` — but `connections: [*limit]` is
-  accepted and relates the edge to a value. The two spellings answer different questions
-  (a path walks the definition table, an alias reads the arena), and the endpoint rule
-  follows each spelling rather than imposing a third answer over both.
-* **The `connections` member must *be* a sequence; an alias to one is `E0224`.**
-  `connections: *Endpoints`, where `&Endpoints` is a perfectly good sequence, is the
-  wrong shape. Aliases are dereferenced for an **item** and not for the member's value,
-  so an edge either writes its sequence or **inherits the member** whole (D1.5): the way
-  to share endpoints is a base that holds `connections`, reached by `extends` or `<<`,
-  which is exactly what `projects/edge-mixin` writes. That keeps `connections` one member
-  rather than one indirection, and it keeps the endpoint list somewhere the resolved view
-  can see it.
+The alias case is raised by `check` rather than by `link`, because an alias is not a
+path and never became a reference: pass 4 never saw it. It is still `E0213` and not a
+new code — one fault, one number — and its message names the anchored scalar it found.
+
+**The `connections` member's own value is dereferenced by the same rule.**
+`connections: *Endpoints`, where `&Endpoints` is a sequence, relates what that sequence
+names. An alias is dereferenced for the member's value exactly as it is for an item, so
+two edges may share one endpoint list without either of them extending the other, and
+the value's *shape* is judged after the dereference: an alias to a mapping or a scalar
+is `E0224` like any other wrong shape. What this does **not** loosen is where the items
+may be written — they are read as reaches wherever the sequence is, which is why the
+reach position is the **sequence** and not the key holding it.
+
+*Fixture:* `projects/edge-shared-sequence`, whose two edges alias one imported sequence;
+and `projects/edge-errors`, whose `&ToAValue` writes both spellings of the anchored
+scalar and earns `E0213` for each.
 
 #### A position has one spelling
 
@@ -2254,14 +2301,33 @@ the **first** handle naming a position labels it, so the index does not silently
 which handle was written last; the rest are not lost, because every handle is kept on the
 edge and a lookup by handle reads that list.
 
+**A malformed `connections` removes the bound and nothing else.** The two members are
+read independently, so a `connections` that earned `E0223` or `E0224` does not excuse
+`definition` from being read: its own shape is checked (`definition: 1` is `E0224`
+whatever sits above it), and so are the two rejections that never asked how long the
+sequence is — a handle taking an owned name, and a value that is not a position at all.
+Only **past the end** is withheld, because there is no length to be past the end of;
+raised against zero it would print one fault once per handle, and every one of those
+would vanish when the member above was fixed. The edge then records **no** handles, which
+is the same statement as its recording no endpoints: a sequence that was never read
+writes no positions, so there are none to name. Without this rule a `definition` full of
+nonsense was silently accepted whenever `connections` was malformed, which is a silence
+about the very member the author was in the middle of getting wrong.
+
 #### `E0223` and `E0224` are two codes because they have two fixes
 
-* **`E0223` — the edge relates nothing.** Either there is no `connections` in the resolved
-  view at all, or there is one whose value is empty or null: an **unsatisfied
-  declaration**, `pub connections:` written in a base and never supplied by the concrete
-  edge. Both relate nothing, both have the same fix — *write the endpoints* — and the
-  second earns a note at the declaration so the author is not sent to a line that is
-  correct for every edge that does supply them.
+* **`E0223` — the edge relates nothing.** Three conditions, one code, one fix: *write the
+  endpoints*.
+  * There is no `connections` in the resolved view at all.
+  * There is one whose value is empty or null. Two situations reach this and they are
+    **worded apart**, because the author's next move differs. An **unsatisfied
+    declaration** — `pub connections:` written in a base and never supplied by the
+    concrete edge — earns a note at the declaration, so the author is not sent to a line
+    that is correct for every edge that does supply them. A node that emptied the member
+    it wrote **itself** inherited nothing, and telling it about a declaration would send
+    it looking for a base there is none of; its note points at its own key.
+  * There is one written in a **base YAML** file, where nothing is a reach — argued
+    under *An edge cannot take its endpoints from a base YAML file* below.
 * **`E0224` — the wrong shape.** A `connections` that is neither a sequence nor null, or a
   `definition` that is not a mapping. The fix is the value's shape, which is a different
   thing to look at.
@@ -2304,24 +2370,39 @@ this one — declares the dependency and the intent and installs nothing, so `E0
 *Fixture:* `projects/edge-capability`, whose edge relates one node in an `immutable` peer
 directory with `!ref` (`E0217`) and one in its own scope without.
 
-#### The one place this is currently silent, stated rather than hidden
+#### An edge cannot take its endpoints from a base YAML file
 
-**A `connections` inherited from a *base YAML* file relates nothing, and says nothing.**
-`.yaml` is data, not language (D6.6): its scalars are never read as paths, its anchors
-are not addressable, and no pass resolves anything in it. So an `!edge` that includes or
-extends a `.yaml` mapping holding `connections: [Alpha]` ends up with the member — the
-resolved view is composed across file classes, because `<<` is YAML's and is governed in
-both — and with **no endpoints**, because none of its items was ever a reach. There is no
-`E0223`, because the member is present and is a sequence; there is no `E0213`, because no
-path was written where the compiler was looking.
+**A `connections` the resolved view sites in a `.yaml` is `E0223`.** `.yaml` is data, not
+language (D6.6): its scalars are never read as paths, its anchors are not addressable,
+and no pass resolves anything in it. So an `!edge` that includes or extends a `.yaml`
+mapping holding `connections: [Alpha]` ends up with the member — the resolved view is
+composed across file classes, because `<<` is YAML's and is governed in both — and with
+**no endpoints**, because none of its items was ever a reach.
 
-That is a **silent** answer to a question the author thinks they asked, which is the
-failure mode D2.1 names as the worst this system has, and it is recorded here as a known
-gap rather than argued into a feature. What is *not* in doubt is the rule it follows
-from: a base YAML file declares nothing and is reached by import alone, so it cannot
-carry an edge's endpoints any more than it can carry a canonical name. The endpoints
-belong in a `.yfy`, where a path means something. The gap is that saying so is left to
-this paragraph instead of to a diagnostic.
+This was silent until it was not, and the silence was the argument. There was no `E0223`,
+because the member was present and was a sequence; there was no `E0213`, because no path
+had been written where the compiler was looking; and the author got a wrong graph with
+nothing said about it, which is the failure mode D2.1 names as the worst this system has.
+The rule it follows from was never in doubt — a base YAML file declares nothing and is
+reached by import alone, so it cannot carry an edge's endpoints any more than it can
+carry a canonical name — and all that was missing was saying so.
+
+**The condition is the member's file class, not what the member holds.** `connections`
+in a `.yaml` is `E0223` whether it holds three items, one, or none: base YAML cannot
+carry endpoints, so an empty sequence there is not the deliberate degenerate edge
+`connections: []` is in a `.yfy` — it is the same member in the same place it may not be.
+One condition, no subcases, and a note pointing at the sequence in the `.yaml` beside the
+message naming the edge.
+
+**Only `connections` is refused, and `definition` is read like any other member.** The
+two are not alike here: a `connections` item is a **reach**, and reaching is the thing
+base YAML does not do, while a handle's value is a **position** — a small whole number
+indexing a sequence — and nothing about reading one depends on the file class. Refusing
+`definition` too would be a rule about file classes rather than a rule about reaching,
+and it would say that data cannot hold a number.
+
+*Fixture:* `projects/edge-base-yaml`, whose `defaults.yaml` writes both members and whose
+edge earns exactly one diagnostic for the one of them that is a reach.
 
 #### The two owned members are never data edges
 
@@ -2333,9 +2414,12 @@ the **language's**, on both sides, and none of it is also read as a member namin
   than a hypothetical, because a data edge leaves the *collection* a value sits in, and
   for a sequence element that is the sequence rather than the edge node, so a duplicate is
   invisible to any check made on the edge's own run;
-* a **wrongly-shaped `connections`** records no relationship at all. `connections: *Mixin`
-  is `E0224` and relates nothing; turning the operand into a data edge would put in the
-  image the relationship the compiler had just refused;
+* the `connections` **value** is the language's too, on both outcomes. An alias standing
+  there is the sequence of endpoints and its items are already recorded once each, so
+  reading the alias as data would say the same relationships a second time under a second
+  kind; and a value of the **wrong shape** records no relationship at all — it has earned
+  `E0224` and relates nothing, and turning it into a data edge would put in the image the
+  relationship the compiler had just refused;
 * a **handle's value is a position**, so `owner: ./Alpha` is `E0225` and is *not* also a
   member of the edge that names `Alpha`. It indexes a sequence; it never names a node.
 
@@ -2403,8 +2487,14 @@ every concrete edge of a family that declares its endpoints once in the base.
   endpoint, the three near-misses of a position's one spelling, a handle taking an owned
   name, an inherited `definition` narrowed by a concrete edge, an unsatisfied inherited
   declaration, and a handle whose value looks like a path.
-* `projects/edge-errors` — `E0223`, both shapes of `E0224`, two conditions of `E0225`,
-  and an endpoint naming nothing.
+* `projects/edge-errors` — `E0223` for a node with no member and for one that emptied its
+  own, both shapes of `E0224`, four conditions of `E0225`, an endpoint naming nothing,
+  both spellings of an anchored scalar as an endpoint, and a `definition` read beside a
+  `connections` that was never read.
+* `projects/edge-base-yaml` — a `connections` and a `definition` inherited from a `.yaml`:
+  one of them is a reach and is `E0223`, and the other is a position and is not.
+* `projects/edge-shared-sequence` — two edges aliasing one imported sequence as the
+  `connections` **value**.
 * `projects/edge-extends` — an abstract edge family as a `!type`, restating and inheriting
   `connections`, and the `W0301` exemption.
 * `projects/edge-mixin` — endpoints inherited from an untagged base, a `!node` base and a

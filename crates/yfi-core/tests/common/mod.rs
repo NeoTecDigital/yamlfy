@@ -17,6 +17,8 @@
 
 #![allow(dead_code)]
 
+pub mod edge;
+
 use std::path::PathBuf;
 
 use yfi_core::{discover, DiscoverOptions, Project, ScopeId};

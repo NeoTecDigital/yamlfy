@@ -70,6 +70,9 @@ pub enum Code {
     DuplicateKey,
     /// A mapping contains more than one merge key.
     DuplicateMergeKey,
+    /// A **non-scalar** key carries the `!!merge` tag, which makes no merge key
+    /// of it (D1.1) and means nothing where it stands.
+    MergeTagOnComplexKey,
     /// An anchor's name could not be recovered from the source text.
     AnchorNameUnrecoverable,
     /// Recovered anchor positions are not in definition order.
@@ -151,6 +154,7 @@ impl Code {
             Code::RecoveryLimitExceeded => "E0103",
             Code::UnterminatedBlock => "E0104",
             Code::DuplicateKey => "E0110",
+            Code::MergeTagOnComplexKey => "E0111",
             Code::AnchorNameUnrecoverable => "E0120",
             Code::AnchorOrderInconsistent => "E0121",
             Code::CrossDocumentAlias => "E0130",
@@ -200,6 +204,7 @@ impl Code {
             Code::RecoveryLimitExceeded,
             Code::UnterminatedBlock,
             Code::DuplicateKey,
+            Code::MergeTagOnComplexKey,
             Code::DuplicateMergeKey,
             Code::AnchorNameUnrecoverable,
             Code::AnchorOrderInconsistent,

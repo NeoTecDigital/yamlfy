@@ -26,7 +26,7 @@
 mod common;
 
 /// Base YAML fixtures: the parser-level corpus.
-const EXPECTED_YML: usize = 45;
+const EXPECTED_YML: usize = 46;
 
 /// Yamlfication source fixtures: the surface syntax of the language.
 const EXPECTED_YFY: usize = 2;

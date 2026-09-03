@@ -29,3 +29,33 @@ pub definition:
 # same failure a clause operand naming nothing is, with the same code.
 --- !edge &Nowhere
 pub connections: [Nothing]
+# `E0213` twice, once for each spelling. An endpoint is a **node**; an anchored
+# scalar is a value, and D6.1 makes only an anchored collection addressable. The
+# path spelling has always said so, the alias spelling used to say nothing, and
+# one question with two spellings had two answers.
+--- !edge &ToAValue
+pub limit: &limit 30
+pub connections: [limit, *limit]
+# `E0223` again, and worded for the case it is: this node writes the member
+# itself. Nothing was inherited, so a message about a declaration nobody
+# supplied would send the author looking for a base that does not exist.
+--- !edge &Emptied
+pub connections: ~
+# A `connections` of the wrong shape removes the **bound** a handle is checked
+# against, and nothing else. `connections` as a handle name and a value that is
+# not a position at all are wrong however many endpoints there are, so both are
+# `E0225` here; `late: 2` is not, because a position past the end of a sequence
+# that was never read is a cascade from one fault rather than a fault of its
+# own, and it goes away when the member above it is fixed.
+--- !edge &Cascade
+pub connections: 7
+pub definition:
+  connections: 0
+  nope: what
+  late: 2
+# And `definition`'s own shape is a fault of its own: it is not a position in
+# anything, so nothing about reading it depends on the member above it. Two
+# members, two `E0224`s, from one node.
+--- !edge &Both
+pub connections: 7
+pub definition: 1

@@ -1,0 +1,15 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: edges::base
+visibility: public
+imports: defaults.yaml
+--- !node &Alpha
+pub port: 1
+# `E0223`. The member arrives — the resolved view is composed across file
+# classes, because `<<` is YAML's and is governed in both — and it carries no
+# endpoints, because a base YAML file declares nothing and none of its items
+# was ever a reach. The endpoints belong in a `.yfy`.
+--- !edge &FromData
+<<: *Endpoints

@@ -1,0 +1,14 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+# D1.1 says a merge key is a *scalar* tagged `!!merge`, so a collection carrying
+# the tag is correctly not one. What it becomes is an ordinary complex key, and
+# the tag then classifies nothing, prints nothing and is consumed by nothing —
+# a tag that means nothing, which E0111 now says out loud.
+holder:
+  !!merge [k]: 1
+  !!merge [k]: 2
+  # The other half of the old gap, and it stays: duplicate detection compares
+  # keys by scalar text, because that is the only key identity this language
+  # defines, so neither pair below is compared and neither is reported.
+  [j]: 3
+  [j]: 4

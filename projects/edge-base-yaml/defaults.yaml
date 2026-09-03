@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Base YAML: data, not language (D6.6). Nothing here is a reach, no anchor here
+# is addressable, and `connections` is an ordinary member name — so a sequence
+# written under it names nodes to a reader and names nothing to the compiler.
+relation: &Endpoints
+  connections: [Alpha]
+  definition:
+    only: 0

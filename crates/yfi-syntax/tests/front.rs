@@ -63,7 +63,7 @@ fn the_constructs_move_no_node_at_all() {
 #[test]
 fn reading_the_whole_corpus_as_yamlfication_source_changes_nothing() {
     // Every fixture is already free of the three constructs, so the pre-pass
-    // must be the identity over all 47 of them — nodes, kinds, spans and
+    // must be the identity over all 48 of them — nodes, kinds, spans and
     // diagnostics alike. This is the guard that catches a rewrite rule that is
     // too eager: a `//` inside a URL, a `#` inside a block scalar, a `<` in a
     // flow sequence.

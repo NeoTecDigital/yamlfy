@@ -206,7 +206,7 @@ fn the_semantic_passes_reach_the_command_line() {
     // Every code asserted elsewhere in this file is owned by `discover` or
     // `parse`. This is the only test that fails if `check` stops running
     // `intern`, `link` and `check` -- which is what it did until recently,
-    // reporting `0 error(s)` on a project raising six. A compiler whose
+    // reporting `0 error(s)` on a project raising every one of them. A compiler whose
     // semantic errors are invisible from a terminal is one whose errors
     // nobody sees, so the assertion is on codes no file reader can raise.
     let path = project("edge-errors");
@@ -217,7 +217,7 @@ fn the_semantic_passes_reach_the_command_line() {
     for code in ["E0213", "E0223", "E0224", "E0225"] {
         assert!(text.contains(&format!("error[{code}]")), "{code} never reached stdout: {text}");
     }
-    assert!(text.contains("6 error(s)"), "{text}");
+    assert!(text.contains("14 error(s)"), "{text}");
 }
 
 // ------------------------------------------------- the invocation-wide report

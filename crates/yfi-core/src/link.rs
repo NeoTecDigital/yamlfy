@@ -246,7 +246,7 @@ pub fn link_with(project: &Project, interned: &Interned, severities: SeverityMap
     keys::check_member_names(&ctx, &mut diagnostics);
     let table = table::build(&ctx, &mut diagnostics);
     let space = path::Space::build(&ctx);
-    let endpoints = endpoint_holders(&ctx, &table, &space);
+    let endpoints = endpoint_sequences(&ctx, &table, &space);
     let references = refs::resolve(&ctx, &table, &space, &endpoints, &mut diagnostics);
     let clauses = clause::collect(&ctx, &references, &mut diagnostics);
     let contributions = contrib::collect(&ctx, &table, &clauses, &mut diagnostics);
@@ -266,7 +266,7 @@ pub fn link_with(project: &Project, interned: &Interned, severities: SeverityMap
     Linked { diagnostics, table, references, clauses, graph, contributions }
 }
 
-/// The nodes whose `connections` member some `!edge` ends up reading (D4.13).
+/// The sequences whose items some `!edge` ends up reading as endpoints (D4.13).
 ///
 /// A `connections` item is a reach, so [`refs`] has to know — while it is
 /// looking at the item — whether the scalar beside it names a node. That is not
@@ -274,7 +274,9 @@ pub fn link_with(project: &Project, interned: &Interned, severities: SeverityMap
 /// that carry no tag saying so, and making every `!type`'s `connections` a
 /// reach would reserve the name across the language. It is answerable from the
 /// **inheritance relation**, which is what [`crate::edge::endpoint_holders`]
-/// reads.
+/// reads, followed one step to the sequence the member names — an alias
+/// standing as that value is dereferenced, so the items may be written in a
+/// file that holds no edge at all.
 ///
 /// The relation is built from clauses, and a clause operand may itself be a
 /// path, so the reference pass runs once as a silent [`refs::probe`] to give
@@ -282,12 +284,12 @@ pub fn link_with(project: &Project, interned: &Interned, severities: SeverityMap
 /// answer — the set decides one position and no operand is in it — so the
 /// probe's clauses are the clauses, and only the diagnostics are withheld,
 /// because the real run raises them.
-fn endpoint_holders(
+fn endpoint_sequences(
     ctx: &Ctx,
     table: &table::Table,
     space: &path::Space,
 ) -> HashSet<(FileId, NodeId)> {
     let probe = refs::probe(ctx, table, space);
     let clauses = clause::collect(ctx, &probe, &mut Diagnostics::new());
-    crate::edge::endpoint_holders(ctx.interned, &clauses)
+    crate::edge::endpoint_sequences(ctx, &clauses)
 }

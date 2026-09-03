@@ -111,3 +111,34 @@ fn explicit_merge_tag_is_honoured_and_a_string_tag_is_not() {
     assert!(!entries[2].merge, "`!!str` does not");
     assert!(is_merge_key(ast, entries[1].key));
 }
+
+#[test]
+fn a_merge_tag_on_a_non_scalar_key_is_reported_and_merges_nothing() {
+    // D1.1 says *scalar*, so `!!merge [k]: 1` is correctly not a merge key. It
+    // then became an ordinary complex key and the tag classified nothing,
+    // printed nothing and was consumed by nothing — a reservation with no
+    // diagnostic behind it, which D7.4 names as the failure reserving a
+    // spelling exists to prevent. `E0111` says it out loud.
+    let (_, parsed) = parse("merge/merge-tag-on-complex-key.yml");
+    let ast = &parsed.ast;
+    let holder = value_of(ast, root(ast, 0), "holder");
+
+    assert_eq!(merge_entries(ast, holder), 0, "the tag makes no merge key of a collection");
+    assert_eq!(count(&parsed.diagnostics, Code::MergeTagOnComplexKey), 2, "one per tagged key");
+    assert_eq!(
+        count(&parsed.diagnostics, Code::DuplicateMergeKey),
+        0,
+        "and it is not a merge key, so it is not two of them either"
+    );
+}
+
+#[test]
+fn two_complex_keys_that_are_alike_are_still_not_compared() {
+    // The deliberate half of the same fixture, and it is permanent: key
+    // identity in this language is a key's **scalar text**, so a complex key
+    // has no identity to compare and neither pair below is reported. The rule
+    // is bounded — a non-merge key is absorbed as data, so this can only ever
+    // be silence and never a wrong graph.
+    let (_, parsed) = parse("merge/merge-tag-on-complex-key.yml");
+    assert_eq!(count(&parsed.diagnostics, Code::DuplicateKey), 0);
+}

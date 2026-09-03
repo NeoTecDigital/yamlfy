@@ -73,7 +73,9 @@ fn synthesise_empty(ast: &mut Ast, span: Span) -> NodeId {
 /// still different keys.
 ///
 /// Only scalar keys participate; comparing complex keys requires resolved
-/// values, which the parser does not have.
+/// values, which the parser does not have. A complex key still costs `E0111`
+/// when it carries the merge tag — see [`decorative_merge`], which also records
+/// why the *comparison* stays silent on purpose.
 pub(crate) fn check_keys(ast: &Ast, entries: &[Entry], diags: &mut Diagnostics) {
     let mut seen: HashMap<&str, Span> = HashMap::with_capacity(entries.len());
     let mut first_merge: Option<Span> = None;
@@ -86,11 +88,47 @@ pub(crate) fn check_keys(ast: &Ast, entries: &[Entry], diags: &mut Diagnostics) 
             }
             continue;
         }
-        let Some(scalar) = ast.scalar(entry.key) else { continue };
+        let Some(scalar) = ast.scalar(entry.key) else {
+            decorative_merge(ast, entry.key, span, diags);
+            continue;
+        };
         if let Some(first) = seen.insert(&scalar.value, span) {
             diags.push(duplicate(false, &scalar.value, span, first));
         }
     }
+}
+
+/// `E0111` — `!!merge` on a **non-scalar** key.
+///
+/// D1.1 says a merge key is a *scalar* tagged `!!merge`, so `!!merge [k]: 1` is
+/// correctly not one. What it becomes is an ordinary complex key, and the tag
+/// then classifies nothing, resolves nothing and is consumed by nothing. A tag
+/// that means nothing is worse than one that does not exist — the argument
+/// D7.4 makes for `!oneof` and D4.13 makes for `E0223`, and it holds here for
+/// the same reason: silence leaves the author believing they wrote a merge.
+///
+/// The **other** silence in this position is deliberate and stays. Two complex
+/// keys alike in one mapping are not reported, because key identity in this
+/// language is a key's scalar text and a complex key has none to compare;
+/// deciding it needs resolved values, which the parser does not have. It is
+/// bounded — a non-merge key is absorbed as data — so it can only ever be
+/// silence and never a wrong graph.
+fn decorative_merge(ast: &Ast, key: NodeId, span: Span, diags: &mut Diagnostics) {
+    if !ast.tag(key).is_some_and(|tag| tag.is_core("merge")) {
+        return;
+    }
+    diags.push(
+        Diagnostic::new(
+            Code::MergeTagOnComplexKey,
+            span,
+            "`!!merge` on a non-scalar key is not a merge key, and means nothing here",
+        )
+        .with_note(
+            "a merge key is a scalar: a plain `<<`, or any scalar tagged `!!merge`; this entry \
+             is an ordinary complex key and its value is data",
+            None,
+        ),
+    );
 }
 
 fn duplicate(merge: bool, text: &str, span: Span, first: Span) -> Diagnostic {

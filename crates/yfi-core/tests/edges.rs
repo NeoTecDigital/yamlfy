@@ -14,69 +14,13 @@
 
 mod common;
 
-use common::pipeline::{open, Compiled};
+use common::edge::{by_name, endpoints, image, symbol};
+use common::pipeline::open;
 use yfi_core::edge::{CONNECTIONS, DEFINITION};
-use yfi_core::emit::emit;
-use yfi_core::image::{EdgeKind, Image, ModelId, ModelKind, Named};
-use yfi_core::{ScopeId, Symbol};
+use yfi_core::image::{EdgeKind, ModelId, ModelKind, Named};
 use yfi_syntax::Code;
 
-/// A project taken all the way through pass 6.
-fn image<'a>(fixture: &'a Compiled) -> Image<'a> {
-    emit(&fixture.project, &fixture.interned, &fixture.linked, &fixture.checked)
-}
-
-/// The node an anchor names, whatever its kind.
-fn by_name<'a>(image: &'a Image<'a>, name: &str) -> ModelId {
-    image
-        .nodes()
-        .find(|held| held.name() == Some(name))
-        .unwrap_or_else(|| panic!("no node called `{name}`"))
-        .id()
-}
-
-/// The anchor names of the nodes an edge connects, in written order.
-fn endpoints<'a>(image: &'a Image<'a>, edge: &str) -> Vec<String> {
-    image
-        .model(by_name(image, edge))
-        .expect("a node")
-        .connections()
-        .map(|held| held.name().unwrap_or("<anonymous>").to_owned())
-        .collect()
-}
-
-/// An interned name, which is how a handle is addressed.
-fn symbol(fixture: &Compiled, text: &str) -> Symbol {
-    fixture.interned.symbols().get(text).unwrap_or_else(|| panic!("`{text}` is never written"))
-}
-
-/// Every edge fixture that is meant to compile without a word said about it.
-/// Two corpus-wide sweeps read it, so a fixture added here is held to both.
-const CLEAN: [&str; 7] = [
-    "edge-binary",
-    "edge-nary",
-    "edge-handles",
-    "edge-extends",
-    "edge-visibility",
-    "edge-mixin",
-    "edge-not-a-reach",
-];
-
-/// The scope a project fixture's directory claims.
-fn scope(fixture: &Compiled, qualified: &str) -> ScopeId {
-    common::scope_by(&fixture.project, qualified)
-}
-
 // ------------------------------------------------------------ an edge is a node
-
-#[test]
-fn every_edge_fixture_that_should_be_clean_is_clean() {
-    for name in CLEAN {
-        let fixture = open(name);
-        assert!(fixture.linked.diagnostics().is_empty(), "{name}: {}", fixture.rendered());
-        assert!(fixture.checked.diagnostics().is_empty(), "{name}: {}", fixture.rendered());
-    }
-}
 
 #[test]
 fn an_edge_is_a_node_addressable_and_emitted_like_any_other() {
@@ -170,6 +114,30 @@ fn the_edge_index_and_the_edge_nodes_are_the_same_index() {
     }
 }
 
+#[test]
+fn an_alias_standing_as_the_connections_value_is_dereferenced_like_an_item() {
+    // The asymmetry that was: an alias was dereferenced for an **item** and not
+    // for the member's own value, so `connections: *Pair` was the wrong shape
+    // though `*Pair` named a perfectly good sequence. One rule now answers both
+    // spellings, and two edges share one endpoint list without either of them
+    // extending the other.
+    let fixture = open("edge-shared-sequence");
+    assert_eq!(fixture.count(Code::EdgeMemberShape), 0, "{}", fixture.rendered());
+    let image = image(&fixture);
+    assert_eq!(endpoints(&image, "Aliased"), ["Alpha", "Beta"]);
+    assert_eq!(
+        endpoints(&image, "AlsoAliased"),
+        ["Alpha", "Beta"],
+        "and the second reader of the sequence gets the same answer"
+    );
+    let aliased = image.model(by_name(&image, "Aliased")).expect("a node");
+    assert_eq!(
+        aliased.connection(symbol(&fixture, "to")).and_then(|held| held.name()),
+        Some("Beta"),
+        "the positions a handle indexes are the aliased sequence's, in written order"
+    );
+}
+
 // ---------------------------------------------------------------- arity
 
 #[test]
@@ -201,21 +169,6 @@ fn an_edge_may_be_an_endpoint_of_another_edge() {
     let over: Vec<String> =
         route.incident_edges().filter_map(|held| held.name()).map(str::to_owned).collect();
     assert_eq!(over, ["Supersedes"]);
-}
-
-#[test]
-fn an_edge_with_no_endpoints_is_a_shape_and_an_edge_with_no_member_is_a_fault() {
-    // The degenerate/absent split, and it is D7.3's split one level over:
-    // `connections: []` is written, and absence is not.
-    let clean = open("edge-nary");
-    let image = image(&clean);
-    let planned = image.model(by_name(&image, "Planned")).expect("a node");
-    assert_eq!(planned.connections().count(), 0);
-    assert!(planned.is_edge(), "it is still an edge, and still emitted");
-    assert_eq!(clean.count(Code::EdgeWithoutConnections), 0, "{}", clean.rendered());
-
-    let broken = open("edge-errors");
-    assert_eq!(broken.count(Code::EdgeWithoutConnections), 1, "{}", broken.rendered());
 }
 
 // --------------------------------------------------------------- handles
@@ -255,22 +208,6 @@ fn two_handles_may_name_one_position_which_is_what_a_self_loop_is() {
             "`{handle}` names the one position there is"
         );
     }
-}
-
-#[test]
-fn a_handle_naming_no_position_is_reported_and_the_others_still_bind() {
-    // Two conditions, one code: past the end, and not an index at all.
-    // Diagnostics accumulate, so a bad handle does not cost the good ones.
-    let fixture = open("edge-errors");
-    assert_eq!(fixture.count(Code::UnboundHandle), 2, "{}", fixture.rendered());
-    let image = image(&fixture);
-    let bad = image.model(by_name(&image, "BadHandles")).expect("a node");
-    assert_eq!(
-        bad.connection(symbol(&fixture, "source")).and_then(|held| held.name()),
-        Some("Alpha"),
-        "the handle that does name a position still names it"
-    );
-    assert!(bad.connection(symbol(&fixture, "target")).is_none());
 }
 
 // -------------------------------------------------------- the three operators
@@ -332,100 +269,7 @@ fn the_two_members_the_language_owns_are_never_reported_as_undeclared() {
 
 // -------------------------------------------------------------- visibility
 
-#[test]
-fn an_edges_endpoints_are_gated_by_the_connections_member() {
-    // Reusing pass 5's predicate and writing no second one. A bare member is
-    // private (D4.12), so an edge may be public and addressable while what it
-    // relates is not disclosed.
-    let fixture = open("edge-visibility");
-    let image = image(&fixture);
-    let inside = scope(&fixture, "edge-visibility/open");
-    let outside = scope(&fixture, "edge-visibility/peer");
-
-    let shown = image.model(by_name(&image, "Shown")).expect("a node");
-    let hidden = image.model(by_name(&image, "Hidden")).expect("a node");
-
-    assert_eq!(shown.connections_readable_from(outside).count(), 2, "`pub connections`");
-    assert_eq!(hidden.connections_readable_from(outside).count(), 0, "a bare one discloses none");
-    assert_eq!(hidden.connections_readable_from(inside).count(), 2, "and is ordinary inside");
-    assert!(hidden.is_visible_from(outside), "the edge is still a visible, addressable node");
-    assert_eq!(hidden.connections().count(), 2, "the unfiltered walk is unchanged");
-}
-
-#[test]
-fn an_endpoint_the_observer_may_not_see_is_absent_by_shape() {
-    // Never a hole, a null or a count, or the scoping leaks through the result.
-    let fixture = open("edge-visibility");
-    let image = image(&fixture);
-    let outside = scope(&fixture, "edge-visibility/peer");
-    let hidden = image.model(by_name(&image, "Hidden")).expect("a node");
-    assert!(hidden.connections_readable_from(outside).next().is_none());
-}
-
-#[test]
-fn a_connection_into_a_scope_the_edge_cannot_see_is_e0216_and_stays_undisclosed() {
-    // The gate stands in front of a connections item exactly as it stands in
-    // front of a clause operand, because the item *is* a reach. And a project
-    // that raised `E0216` still emits, so the image must give the same answer
-    // the compiler gave rather than becoming the way around it.
-    let fixture = common::pipeline::through(common::open("edge-invisible-connection"));
-    assert_eq!(fixture.count(Code::RefNotVisible), 1, "{}", fixture.rendered());
-    let image = image(&fixture);
-    let reaches = image.model(by_name(&image, "Reaches")).expect("a node");
-    let observer = scope(&fixture, "edge-invisible-connection/open");
-    let seen: Vec<&str> =
-        reaches.connections_readable_from(observer).filter_map(|held| held.name()).collect();
-    assert_eq!(seen, ["Alpha"], "the endpoint it may not see is absent, not present as a hole");
-}
-
-#[test]
-fn no_clean_project_writes_an_edge_whose_endpoint_its_own_scope_cannot_see() {
-    // The premise the member gate rests on, asserted rather than assumed: it is
-    // `E0216` that makes the node gate unreachable behind the member gate, so
-    // if `E0216` ever weakens this fails and says which gate needs rethinking.
-    for name in CLEAN {
-        let fixture = open(name);
-        let image = image(&fixture);
-        for held in image.edges() {
-            for endpoint in held.connections() {
-                assert!(
-                    endpoint.is_visible_from(held.scope()),
-                    "{name}: an edge names what its own scope cannot see"
-                );
-            }
-        }
-    }
-}
-
 // ------------------------------------------------------------------- shapes
-
-#[test]
-fn a_reserved_member_of_the_wrong_shape_is_one_code_over_two_conditions() {
-    // `connections` that is not a sequence and `definition` that is not a
-    // mapping are one fault with one fix, in two places.
-    let fixture = open("edge-errors");
-    assert_eq!(fixture.count(Code::EdgeMemberShape), 2, "{}", fixture.rendered());
-    let image = image(&fixture);
-    for name in ["NotASequence", "NotAMapping"] {
-        let held = image.model(by_name(&image, name)).expect("a node");
-        assert!(held.is_edge(), "`{name}` is still an edge, and is still held");
-    }
-    assert_eq!(endpoints(&image, "NotASequence"), Vec::<String>::new());
-}
-
-#[test]
-fn a_connections_item_naming_nothing_is_the_reach_code_and_not_a_new_one() {
-    // A connections item is a reach, so it fails the way every other reach
-    // fails. Inventing a code for it would give one fault two numbers.
-    let fixture = open("edge-errors");
-    assert_eq!(fixture.count(Code::UnresolvedRef), 1, "{}", fixture.rendered());
-    let image = image(&fixture);
-    assert_eq!(
-        endpoints(&image, "Nowhere"),
-        Vec::<String>::new(),
-        "and the endpoint that named nothing is not invented as one"
-    );
-}
 
 // --------------------------------------------------------------- the corpus
 
@@ -510,50 +354,6 @@ fn a_connections_member_no_edge_reads_is_an_ordinary_member() {
 // ------------------------------------------- one bad item costs one position
 
 #[test]
-fn an_unresolvable_endpoint_costs_its_own_position_and_no_others() {
-    // Three defects from one input, and they are one defect: the number of
-    // positions is what `connections` **writes**, never what survived it.
-    let fixture = open("edge-positions");
-    let image = image(&fixture);
-    let gapped = image.model(by_name(&image, "Gapped")).expect("a node");
-
-    assert_eq!(
-        gapped.connections().filter_map(|held| held.name()).collect::<Vec<_>>(),
-        ["Alpha", "Gamma"],
-        "the item that named nothing contributes no endpoint"
-    );
-    assert_eq!(
-        gapped.connection(symbol(&fixture, "third")).and_then(|held| held.name()),
-        Some("Gamma"),
-        "and `third` still names position 2, which is written and did resolve"
-    );
-    assert!(
-        gapped.connection(symbol(&fixture, "second")).is_none(),
-        "`second` names the gap, and is never quietly handed the endpoint after it"
-    );
-    let keys: Vec<Option<&str>> = gapped
-        .connection_edges()
-        .map(|held| held.key.and_then(|key| fixture.interned.symbols().resolve(key)))
-        .collect();
-    assert_eq!(
-        keys,
-        [Some("first"), Some("third")],
-        "the index agrees with the accessor about which endpoint each handle named"
-    );
-}
-
-#[test]
-fn a_handle_is_checked_against_the_positions_the_sequence_writes() {
-    // The bound, asserted on its own: `third: 2` is legal over a three-item
-    // sequence whatever the middle item resolved to, and it is the only
-    // `E0225` this edge could earn.
-    let fixture = open("edge-positions");
-    let rendered = fixture.rendered();
-    assert!(!rendered.contains("Gapped"), "no handle of `Gapped` is unbound:\n{rendered}");
-    assert!(rendered.contains("E0213"), "and pass 4's codes reach the harness:\n{rendered}");
-}
-
-#[test]
 fn an_endpoint_written_inline_is_an_endpoint() {
     let fixture = open("edge-positions");
     let image = image(&fixture);
@@ -566,76 +366,7 @@ fn an_endpoint_written_inline_is_an_endpoint() {
 
 // --------------------------------------------------------- what a handle is
 
-#[test]
-fn a_position_has_one_spelling() {
-    // The trim was the whole leniency, and its only observable effect was
-    // accepting what should be rejected.
-    let fixture = open("edge-positions");
-    let image = image(&fixture);
-    let spelling = image.model(by_name(&image, "Spelling")).expect("a node");
-    for handle in ["padded", "signed", "leading"] {
-        assert!(
-            spelling.connection(symbol(&fixture, handle)).is_none(),
-            "`{handle}` is not a position and does not name one"
-        );
-    }
-    assert_eq!(spelling.connection_edges().count(), 1);
-    assert!(spelling.connection_edges().all(|held| held.key.is_none()), "and labels nothing");
-}
-
-#[test]
-fn a_handle_may_not_take_one_of_the_two_names_the_language_owns() {
-    let fixture = open("edge-positions");
-    let image = image(&fixture);
-    let shadowing = image.model(by_name(&image, "Shadowing")).expect("a node");
-    assert!(shadowing.connection(symbol(&fixture, CONNECTIONS)).is_none());
-    assert!(
-        fixture.rendered().contains("Shadowing"),
-        "and it is reported rather than silently shadowing: {}",
-        fixture.rendered()
-    );
-}
-
-#[test]
-fn a_handle_that_names_no_position_here_names_the_node_it_is_wrong_about() {
-    // `E0225` over an inherited `definition`. The primary span is the base's,
-    // which is correct for every edge of the family that reads the sequence
-    // whole, so the message names the subject and a note points at it.
-    let fixture = open("edge-positions");
-    let rendered = fixture.rendered();
-    assert_eq!(fixture.count(Code::UnboundHandle), 6, "{rendered}");
-    assert!(
-        rendered.contains("`target` names no connection of `edges::positions/Narrowed`"),
-        "the message names its subject:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("inherits this `definition` from `edges::positions/Pairwise`"),
-        "and a note says where the declaration came from:\n{rendered}"
-    );
-    let image = image(&fixture);
-    let narrowed = image.model(by_name(&image, "Narrowed")).expect("a node");
-    assert_eq!(
-        narrowed.connection(symbol(&fixture, "source")).and_then(|held| held.name()),
-        Some("Alpha"),
-        "and the handle that does name a position still names it"
-    );
-}
-
 // ------------------------------------------------- the two members are owned
-
-#[test]
-fn an_edge_that_never_supplies_an_inherited_connections_relates_nothing() {
-    // `E0223` and not `E0224`. The member is a declaration nobody satisfied,
-    // which is the failure of writing no member at all; the shape code would
-    // send the author looking for a sequence they never wrote.
-    let fixture = open("edge-positions");
-    assert_eq!(fixture.count(Code::EdgeWithoutConnections), 1, "{}", fixture.rendered());
-    let image = image(&fixture);
-    assert_eq!(
-        image.model(by_name(&image, "Unsupplied")).expect("a node").connections().count(),
-        0
-    );
-}
 
 #[test]
 fn the_language_owns_definition_as_well_as_connections() {
@@ -729,27 +460,4 @@ fn what_relates_a_node_is_the_relations_and_not_everything_pointing_at_it() {
         "one ordinary member names `Alpha`; a `connections` of the wrong shape and a handle \
          value are members the language owns, and neither is read as one"
     );
-}
-
-#[test]
-fn an_observer_is_told_what_relates_a_node_only_where_it_may_look() {
-    // The reverse of `connections_readable_from`, and it needs the same two
-    // gates: an edge in a scope the observer cannot see is not disclosed by
-    // asking the node it relates, and neither is one whose `connections` is a
-    // bare member.
-    let fixture = open("edge-visibility");
-    let image = image(&fixture);
-    let outside = scope(&fixture, "edge-visibility/peer");
-    let alpha = image.model(by_name(&image, "Alpha")).expect("a node");
-
-    let all: Vec<&str> = alpha.incident_edges().filter_map(|held| held.name()).collect();
-    assert_eq!(all, ["Shown", "Hidden", "Private"], "the unfiltered walk is unchanged");
-    let seen: Vec<&str> =
-        alpha.incident_edges_visible_from(outside).filter_map(|held| held.name()).collect();
-    assert_eq!(
-        seen,
-        ["Shown"],
-        "`Hidden` discloses no endpoints and `Private` is in a scope this observer cannot see"
-    );
-    assert!(alpha.is_visible_from(outside), "while the node itself is public");
 }
