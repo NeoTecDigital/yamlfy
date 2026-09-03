@@ -172,6 +172,13 @@ pub(crate) fn collect(
 /// An item that resolved to nothing is absent, and `E0213` has already named
 /// it — reporting it again here would give one fault two codes.
 fn resolved_items(linked: &Linked) -> HashMap<Place, Place> {
+    // The role filter is a redundancy by construction, kept deliberately: the
+    // map is keyed by the *site* that wrote the reference, and one node carries
+    // one role, so a `connections` item can only ever be a `Connection`.
+    // Removing it changes no output on any fixture. It stays because it states
+    // which references this map is about, and because `endpoints` looks items
+    // up here by place — if a second role ever reached a `connections` item,
+    // this is the line that should refuse it rather than silently answer.
     linked
         .references()
         .iter()
