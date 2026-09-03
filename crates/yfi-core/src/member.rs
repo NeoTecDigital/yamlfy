@@ -1,7 +1,8 @@
 // Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Member flags: the two scope axes, written one level down.
+//! Member flags: the two scope axes and the one override, written one level
+//! down.
 //!
 //! ```text
 //! ClassA:
@@ -12,6 +13,7 @@
 //!   - mut member_two
 //!   - pub mut public_mutable_member
 //!   - mutable public mutable_public_member
+//!   - brute forced_member              // writes where it may not
 //! ```
 //!
 //! `pub`/`public` and `mut`/`mutable` are **prefixes on the member name**, in
@@ -30,6 +32,21 @@
 //! which is exactly D6.5's composition one level down. Nothing here is a second
 //! predicate: the member's declaration and the scope path are combined by the
 //! same [`ScopeTree`](crate::scope::ScopeTree) walk every other reach uses.
+//!
+//! # `brute` is not a third axis
+//!
+//! The two axes state what a member *is*. `brute` states that a member **writes
+//! anyway** — it forces the mutation an immutable target would otherwise refuse
+//! (`E0217`). It is therefore a flag and not an axis: forcing is present or
+//! absent, with no second value and no default worth naming, and it is closed
+//! like the axes are — a bare member forces nothing.
+//!
+//! It is a prefix rather than a tag for the reason the axes are: the position
+//! already exists, the word is read off the scalar, and the parse does not
+//! change. And it is spelled at all — rather than inferred, or allowed silently
+//! — because a write that overrides a refusal is the one act in the language
+//! that must be visible in the source that performs it. Forcing is never
+//! quiet: it is written here and recorded as `W0304` where it takes effect.
 
 use crate::scope::{Mutability, Visibility};
 
@@ -40,6 +57,9 @@ pub struct MemberFlags {
     pub visibility: Option<Visibility>,
     /// Stated mutability. `None` is the closed default.
     pub mutability: Option<Mutability>,
+    /// Whether the member forces its write past a refusal. Absent is the closed
+    /// default: a member that says nothing forces nothing.
+    pub brute: bool,
 }
 
 impl MemberFlags {
@@ -55,10 +75,16 @@ impl MemberFlags {
         self.mutability.unwrap_or(Mutability::Immutable)
     }
 
+    /// Whether the member forces its write past a refusal.
+    #[must_use]
+    pub fn is_brute(self) -> bool {
+        self.brute
+    }
+
     /// Whether the member stated anything at all.
     #[must_use]
     pub fn is_declared(self) -> bool {
-        self.visibility.is_some() || self.mutability.is_some()
+        self.visibility.is_some() || self.mutability.is_some() || self.brute
     }
 }
 
@@ -75,6 +101,7 @@ pub fn split(text: &str) -> (MemberFlags, &str) {
         match word {
             "pub" | "public" => flags.visibility = Some(Visibility::Public),
             "mut" | "mutable" => flags.mutability = Some(Mutability::Mutable),
+            "brute" => flags.brute = true,
             _ => break,
         }
         rest = tail.trim_start();
@@ -89,6 +116,42 @@ mod tests {
     fn read(text: &str) -> (Visibility, Mutability, &str) {
         let (flags, name) = split(text);
         (flags.visibility(), flags.mutability(), name)
+    }
+
+    #[test]
+    fn brute_is_read_off_the_name_like_the_axes() {
+        let (flags, name) = split("brute valuation");
+        assert!(flags.is_brute());
+        assert_eq!(name, "valuation", "the member keeps its real name");
+        assert_eq!(flags.visibility(), Visibility::Private, "brute states no axis");
+        assert_eq!(flags.mutability(), Mutability::Immutable);
+    }
+
+    #[test]
+    fn brute_composes_with_both_axes_in_any_order() {
+        let (flags, name) = split("pub brute mut port");
+        assert_eq!(
+            (flags.visibility(), flags.mutability(), flags.is_brute(), name),
+            (Visibility::Public, Mutability::Mutable, true, "port")
+        );
+        assert!(split("brute pub x").0.is_brute());
+    }
+
+    #[test]
+    fn a_bare_member_forces_nothing() {
+        assert!(!split("member").0.is_brute());
+    }
+
+    #[test]
+    fn brute_with_nothing_to_qualify_is_a_name() {
+        let (flags, name) = split("brute");
+        assert!(!flags.is_brute());
+        assert_eq!(name, "brute");
+    }
+
+    #[test]
+    fn brute_alone_is_a_declaration() {
+        assert!(split("brute x").0.is_declared());
     }
 
     #[test]

@@ -55,12 +55,26 @@
 //! document, and an author told "import target not visible" about a line
 //! containing no import has been sent to the wrong place.
 //!
+//! # `brute` forces the second gate and never the first
+//!
+//! A `!ref` written under a `brute` member (D6.6) performs its write even where
+//! `E0217` would refuse it, and the refusal becomes `W0304` — the write stands
+//! and the forcing is recorded. That asymmetry is the point: mutability is a
+//! *policy* about what may be changed, and a policy is the kind of thing an
+//! author can be entitled to override in the open. Visibility is not. `E0216`
+//! says you may not have this at all, and a member cannot grant itself sight of
+//! what it was never shown, so `brute` is never consulted for it. Since `E0216`
+//! moved into resolution that is structural rather than ordered: an invisible
+//! target never resolves, so this pass never sees it and `brute` has nothing to
+//! force.
+//!
 //! A path naming a definition **in its own file** needs neither check: a file
 //! can always see and always write what it wrote.
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, NodeId, Span};
 
 use crate::link::{Ctx, Linked, Reference};
+use crate::member;
 use crate::scope::{ScopeId, ScopeTree};
 
 use super::names::span_of;
@@ -85,9 +99,43 @@ fn check_one(
     let Some(observer) = ctx.interned.scope_of(reference.file, reference.node) else { return };
     let Some(scope) = ctx.interned.scope_of(target.0, target.1) else { return };
     let scopes = ctx.project.scopes();
-    if let Some(blocker) = scopes.not_writable_by(scope, observer) {
-        diagnostics.push(unwritable(ctx, reference, target, (blocker, observer)));
+    let Some(blocker) = scopes.not_writable_by(scope, observer) else { return };
+    if forces(reference) {
+        diagnostics.push(forced(ctx, reference, target, (blocker, observer)));
+        return;
     }
+    diagnostics.push(unwritable(ctx, reference, target, (blocker, observer)));
+}
+
+/// Whether the member this reference binds declared `brute`.
+///
+/// The flag is read from the key the `!ref` sits under, which is the one
+/// position [`member::split`] is defined over. A `!ref` that binds no key —
+/// a sequence element, or a clause operand — forces nothing, because there is
+/// no member on which the word could have been written.
+fn forces(reference: &Reference) -> bool {
+    reference.binds.as_ref().is_some_and(|key| member::split(key).0.is_brute())
+}
+
+fn forced(
+    ctx: &Ctx,
+    reference: &Reference,
+    target: (FileId, NodeId),
+    blocked: (ScopeId, ScopeId),
+) -> Diagnostic {
+    let scopes = ctx.project.scopes();
+    let at: Option<Span> = scopes.get(blocked.0).and_then(|scope| scope.mutability_span);
+    Diagnostic::new(
+        Code::ForcedWrite,
+        reference.span,
+        format!(
+            "`brute` forces this write: `{}` names a target that may not be written from \
+             here, and the write is performed anyway",
+            reference.text
+        ),
+    )
+    .with_note(composed(scopes, blocked, "immutable"), at)
+    .with_note("the definition is here", Some(span_of(ctx, target)))
 }
 
 fn unwritable(

@@ -126,6 +126,9 @@ pub enum Code {
     /// An extended reference contributes a key the base already defines, so
     /// the contribution does nothing.
     InertContribution,
+    /// A `brute` member forced a write the mutability axis refused. The write
+    /// stands; the record is what keeps forcing from being quiet.
+    ForcedWrite,
     /// A concrete node leaves an ancestor's required field unsupplied.
     RequiredFieldUnsatisfied,
     /// A concrete node's effective value contradicts an ancestor's declared
@@ -176,6 +179,7 @@ impl Code {
             Code::UnboundHandle => "E0225",
             Code::UndeclaredField => "W0301",
             Code::InertContribution => "W0303",
+            Code::ForcedWrite => "W0304",
             Code::DuplicateNamespace => "E0230",
             Code::BadHeaderValue => "E0231",
             Code::UnresolvedImport => "E0240",
@@ -187,9 +191,10 @@ impl Code {
     #[must_use]
     pub fn default_severity(self) -> Severity {
         match self {
-            Code::AnchorShadowed | Code::InertContribution | Code::UndeclaredField => {
-                Severity::Warning
-            }
+            Code::AnchorShadowed
+            | Code::InertContribution
+            | Code::UndeclaredField
+            | Code::ForcedWrite => Severity::Warning,
             _ => Severity::Error,
         }
     }
@@ -222,6 +227,7 @@ impl Code {
             Code::DeclaredTagMismatch,
             Code::UndeclaredField,
             Code::InertContribution,
+            Code::ForcedWrite,
             Code::ReservedTag,
             Code::EdgeWithoutConnections,
             Code::EdgeMemberShape,

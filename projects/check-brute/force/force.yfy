@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: brute::force
+visibility: public
+---
+# `brute::lib` is public and says nothing about mutability, so it is immutable.
+# The bare member is refused (E0217); the `brute` member performs the same write
+# and is recorded instead (W0304).
+Force: !node &Force
+  brute forced: !ref ../lib/Shared
+  refused: !ref ../lib/Shared

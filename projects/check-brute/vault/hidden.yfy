@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: brute::vault
+visibility: private
+---
+Secret: !type &Secret
+  key: 1

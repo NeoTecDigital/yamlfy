@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: brute::blind
+visibility: public
+---
+# `brute` forces the mutability gate and never the visibility one: a member
+# cannot grant itself sight of what it was never shown, so this stays E0216.
+Blind: !node &Blind
+  brute peek: !ref ../vault/Secret

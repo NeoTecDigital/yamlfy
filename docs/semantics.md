@@ -2806,6 +2806,55 @@ prefix on its name, they default to the same closed values for the same reason, 
 compose with the scope's by D6.5's walk. See D4.12; the axes are one system read at two
 granularities, and both granularities are writable.
 
+### D6.4b — `brute` forces the mutability gate, and only that one
+
+A member may be written `brute`, alongside `pub` and `mut` in the same closed prefix
+vocabulary:
+
+```yaml
+Force: !node &Force
+  brute forced: !ref ../lib/Shared     # writes anyway; W0304
+  refused:      !ref ../lib/Shared     # E0217
+```
+
+A `!ref` under a `brute` member performs its write **even where `E0217` would refuse
+it**, and the refusal becomes `W0304` — a warning carrying the same composed note the
+error would have carried, naming the scope that was overridden and the line where it
+said so.
+
+*Why forcing exists at all.* The mutability axis is closed by default (D6.4), which is
+right: a scope that says nothing grants nothing. But a closed default with no override
+is not a policy, it is a wall, and the author of a project is not a stranger to it.
+There are writes that must happen against a target that never anticipated them —
+migrations, corrections, an addon reaching a base that was frozen before the addon
+existed. Without `brute` the only routes are editing the target's header (changing what
+it grants *everyone*, permanently, to serve one caller) or forking it. Both are worse
+than a spelled override, and both hide the act.
+
+*Why it is spelled and recorded rather than inferred.* A write that overrides a refusal
+is the one act in this language that must be visible in the source performing it, and
+visible again in the output. `brute` is written by the author who forces, so review sees
+it at the site; `W0304` is emitted where it takes effect, so a build sees it without
+reading the source. Forcing is permitted; forcing quietly is not. A project that wants
+it fatal denies the code — the severity map is exactly this decision, delegated.
+
+*Why it forces the second gate and never the first.* `E0216` is not a policy. Mutability
+says *this may not be changed*, which is a claim about permitted acts and therefore a
+claim an entitled author can override in the open. Visibility says *you may not have
+this at all*, and a member cannot grant itself sight of what it was never shown — a
+`brute` member reaching into a private scope is refused exactly as a bare one is, and
+nothing is recorded as forced. Since `E0216` is raised in resolution, that separation is
+structural rather than ordered: an invisible target never resolves, so the pass that
+consults `brute` never sees it.
+
+*Why a flag and not a third axis.* The two axes state what a member **is**, with two
+values and a default worth naming. `brute` states that a member **writes anyway**:
+present or absent, no second value, closed like the axes are — a bare member forces
+nothing. A flag with nothing to qualify is a name, as with the axes, so a member
+genuinely called `brute` is written `- brute`.
+
+Fixtures: `projects/check-brute/`. Implemented: `member::split`, `check::reach`, `W0304`.
+
 ### D6.5 — Resolution is path-composed, and needs no narrowing rule
 
 ```
