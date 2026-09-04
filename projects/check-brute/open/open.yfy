@@ -1,0 +1,14 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: brute::open
+visibility: public
+mutability: mutable
+---
+# The target a `brute` has nothing to force against: this scope grants the
+# write, so the member that forces it forces nothing and the compiler says
+# nothing. Forcing is recorded where it takes effect (D6.4b), and here it does
+# not take effect.
+Open: !type &Open
+  pub size: !!int 1

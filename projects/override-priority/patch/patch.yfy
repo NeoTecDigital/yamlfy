@@ -1,0 +1,24 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovp::patch
+visibility: public
+---
+# `extends: override P` with no `!ref` beside it: the local instance, a
+# recorded priority over P's state among the nodes that claim it, no global
+# write and no mutability gate (D4.14). `Ordinary` is the same operation
+# unqualified, and the two resolve identically — the claim is the only
+# difference and it is not a compile-time one.
+Claimant: !node &Claimant
+  extends: override ../base/Potion
+  pub vessel: flask
+Ordinary: !node &Ordinary
+  extends: ../base/Potion
+  pub vessel: flask
+# A bare `override` contributes nothing, because only `extends: !ref` does
+# (D4.3). So there is no contribution for `W0305` to find landing on nothing,
+# and none for `W0303` to call inert.
+Extra: !type &Extra
+  extends: override ../base/Potion
+  pub vesel: pot

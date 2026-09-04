@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovp::base
+visibility: public
+---
+# This scope says nothing about mutability, so it is immutable (D6.4). Every
+# `!ref` into it from outside is refused; every `override` into it is not,
+# because a priority claim is not a mutation.
+Potion: !type &Potion
+  pub vessel: vial

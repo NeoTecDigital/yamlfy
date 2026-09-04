@@ -178,13 +178,18 @@ pub struct Edge {
     pub capability: bool,
     /// Whether it was written `override` (D4.14).
     ///
-    /// On an [`EdgeKind::ExtendedReference`] this is a record of a compile-time
-    /// decision the image has already applied: the contribution outranked the
-    /// base, so the views here hold the result and nothing downstream re-derives
-    /// it. On an [`EdgeKind::Inclusion`] it is the **runtime claim** — *this
-    /// node reserves the right to modify the target's global state* — and it is
-    /// the only thing that spelling leaves behind, because it moves no resolved
-    /// value at compile time. The compiler records it, gates it like any write
+    /// **Priority among the target's claimants**: several nodes may hold the
+    /// target, and the one that wrote the word ranks first for the target's
+    /// state. It is orthogonal to [`Edge::capability`] beside it, which is
+    /// intent to *modify*; a ranking is not a write and is gated by nothing.
+    ///
+    /// On an [`EdgeKind::ExtendedReference`] the claim is decidable at compile
+    /// time and this is a record of a decision already applied: the
+    /// contribution outranked the base, so the views here hold the result and
+    /// nothing downstream re-derives it. On an [`EdgeKind::Extension`] or an
+    /// [`EdgeKind::Inclusion`] nothing was decidable — the ranking is over a
+    /// runtime state — and this flag is the only thing those spellings leave
+    /// behind, because neither moves a resolved value. The compiler records it
     /// and emits it here; **executing it belongs to a runtime**, which is a
     /// separate artifact (D6.5).
     ///

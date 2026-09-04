@@ -56,10 +56,13 @@ pub struct Operand {
     /// operation: `extends` plus [`OperandForm::Ref`] is the only spelling that
     /// installs a reverse edge.
     pub form: OperandForm,
-    /// Whether the operand was written `override` (D4.14). It qualifies the
-    /// clause rather than replacing it: under `extends: !ref` the contribution
-    /// **outranks** the base instead of ranking below it, and under `<<` it is
-    /// a runtime claim that moves no compile-time value at all.
+    /// Whether the operand was written `override` (D4.14): a claim of priority
+    /// among the target's holders. It qualifies the clause rather than
+    /// replacing it, and it is not [`OperandForm::Ref`]'s business — a ranking
+    /// declares no intent to modify, so the two are read separately and either
+    /// may be written without the other. Under `extends: !ref` the contribution
+    /// **outranks** the base instead of ranking below it; under `extends` or
+    /// `<<` nothing compile-time moves and the claim is recorded alone.
     pub overrides: bool,
     /// The mapping it names.
     pub target: (FileId, NodeId),

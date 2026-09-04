@@ -11,3 +11,29 @@ visibility: public
 Force: !node &Force
   brute forced: !ref ../lib/Shared
   refused: !ref ../lib/Shared
+# D4.2's escape, one level down: the prefix is read off a **plain** scalar, so
+# this is a member genuinely called `brute quoted` and it forces nothing.
+Literal: !node &Literal
+  "brute quoted": !ref ../lib/Shared
+# A clause operand binds no member of its own — `extends:` is an operator, not
+# a member — so the `brute` that forces it is the one on the member whose value
+# writes the clause. One level up, which is where the author can see it.
+brute Clause: !node &Clause
+  extends: !ref ../lib/Shared
+# The same rule with the member nested rather than at the document root: the
+# clause is written by `held`'s own value, so `held`'s `brute` reaches it.
+Inner: !node &Inner
+  brute held:
+    extends: !ref ../lib/Shared
+# And it stops there. `outer` is `brute`; the clause is written by a member of
+# `outer`'s value, not by that value, so the refusal stands. A `brute` that
+# reached here would silence a refusal the author never looked at.
+Deep: !node &Deep
+  brute outer:
+    inner:
+      extends: !ref ../lib/Shared
+# `brute::open` grants the write, so this member forces nothing. Forcing is
+# recorded where it takes effect and it does not take effect here: no W0304,
+# and no E0217 either, because nothing refused.
+Vacuous: !node &Vacuous
+  brute allowed: !ref ../open/Open

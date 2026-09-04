@@ -581,12 +581,16 @@ parsed and kept.
 | `E0240` | error | unresolved import (D6.7) | discover |
 | `E0241` | error | import target not visible (D6.7, D6.5) | discover |
 
-**This table is the whole vocabulary.** Every code the compiler can raise is listed
-here and in `Code::all()`, which is what `--deny` validates a configuration against; a
-code in one and not the other would be either a diagnostic no project can configure or
-a configuration key that silences nothing. `W0304` was such a code — raised, configurable
-and absent from this table from the day D6.4b landed — and the omission is repaired above
-rather than argued about: the claim is only worth making if the table is kept.
+**This table is the whole vocabulary, and that is now checked rather than claimed.** Every
+code the compiler can raise is listed here and in `Code::all()`, which is what `--deny`
+validates a configuration against; a code in one and not the other would be either a diagnostic
+no project can configure or a configuration key that silences nothing. `W0304` was such a
+code — raised, configurable and absent from this table from the day D6.4b landed — and it was a
+review that caught it, late, which is the wrong mechanism for an invariant stated this plainly.
+So `crates/yfi-syntax/tests/vocabulary.rs` parses this table and diffs it against `Code::all()`
+in both directions, and the next divergence fails a build. The two exceptions below are named
+in that test rather than skipped, because a check that ignored every unmatched spelling would
+ignore a real omission just as quietly.
 The numbering after `E0225` resumes at
 `E0230`, which begins the scope block; the gap is a block boundary and holds nothing.
 Two numbers appear elsewhere in this document and are deliberately **not** in the table:
@@ -923,13 +927,17 @@ and the correct statement is:
 it looks more like a fourth operator than `!edge` ever did.** It is a keyword on an
 operand (D4.14), and it **inherits the operator's blast radius rather than carrying one
 of its own**: under `extends: !ref` it reaches every `P`, because that is what an
-extended reference already reaches, and under `<<` it reaches exactly the node that wrote
-it, because that is what an inclusion already reaches. It never widens. What it answers
+extended reference already reaches, and under `extends` or `<<` it reaches exactly the node
+that wrote it, because that is what those two already reach. It never widens. What it answers
 is not *what does writing this node change elsewhere* — the three answers still exhaust
-that — but *what does this operation do when it lands on something already there*:
-replace, rather than defer. **That is why the operator set is still closed at three**, and
-why the table above is still exhaustive: three spellings, three blast radii, and one
-keyword that borrows whichever it is written under.
+that — but *whose claim on the target ranks first*. **That is why the operator set is still
+closed at three**, and why the table above is still exhaustive: three spellings, three blast
+radii, and one keyword that borrows whichever it is written under.
+
+It is also **not a fourth spelling of `!ref`**, which is the other way it could have gone
+wrong and did once. `override` is orthogonal to the tag rather than stronger than it: the tag
+declares intent to modify and answers the mutability gate, the keyword ranks holders and
+answers nothing (D4.14). `extends: override P` is legal into a scope no `!ref` may touch.
 
 ### D4.1 — The three operations
 
@@ -1079,10 +1087,12 @@ rows that have to be spotted while reading. Only one of them — `extends: !ref 
 *contributes keys*; the others declare the dependency without installing anything, which
 is why `E0214` and `W0303` remain the extended reference's alone.
 
-*Its neighbour is D4.14's.* `<<: override P` is this row plus a **runtime claim** — P
-belongs to me, and I reserve the right to modify its global state while the graph is
-live. It changes no resolved value either, contributes no keys for the same reason this
-row does not, and is gated by the same `E0217`.
+*Its neighbour is D4.14's, and it is not this row.* `<<: override P` is plain `<<: P` plus a
+**priority claim** — several nodes may hold P, and this one ranks first among them for P's
+runtime state. It changes no resolved value, contributes no keys, and — because it writes no
+tag — declares no capability and is **not gated** by `E0217` at all. The two spellings are
+neighbours in appearance and in nothing else: this row is a declared write, and that one is a
+declared ranking.
 
 **`<<: !ref P` is a feature, and is meant to be written.** It is the one row of that
 table a reader is most likely to take for an accident of a uniform rule — inclusion plus
@@ -1435,7 +1445,9 @@ and is deliberately last: an extended reference adds to a base and never overrid
 **Unless the operand says `override`, in which case that one contribution is absorbed
 *above* tier 1** — the ranking splits in two and nothing else about the list moves
 (D4.14). The keyword qualifies one reference's precedence and inherits its blast radius;
-it adds no tier of its own and no fourth operator.
+it adds no tier of its own and no fourth operator. This applies to tier 5 alone, because tier 5
+is where a claim on a base is decidable at compile time: the same keyword on an `extends` or a
+`<<` operand ranks holders of a runtime state and moves no tier at all.
 
 *Why extensions rank below inclusions:* an inclusion is a deliberate, visible,
 node-local statement about *this* node, while a base is a general statement about a
@@ -2566,19 +2578,22 @@ arriving one decision later about precedence, and it gets the same answer: **the
 permitted, spelled, gated and recorded.**
 
 ```yfy
-extends: !ref override ../base/Potion   // redefinition, at compile time
+extends: !ref override ../base/Potion   // redefinition, at compile time, and a claim
+extends: override ../base/Potion        // the claim alone: no write, no gate
 <<: override ../base/Potion             // a runtime claim, and nothing else
 ```
 
 **`override` inherits the operator's blast radius and adds none of its own, which is why
 the operator set is still closed at three.** It is not a fourth operation and does not
 answer *what does writing this node change elsewhere* — the three answers, nothing,
-nothing and every `P`, still exhaust that question. What it answers is *what does this
-operation do when it lands on something that is already there*: **replace, rather than
-defer**. Under `extends: !ref` that reaches every `P`, because that is what an extended
-reference already reaches; under `<<` it reaches exactly this node, because that is what
-an inclusion already reaches. The keyword never widens the radius, so the table in §6
-stays exhaustive and there is still nothing else to check.
+nothing and every `P`, still exhaust that question. What it answers is *whose claim on the
+target ranks first*, and what that ranking then does is the operator's business. Under
+`extends: !ref` it reaches every `P`, because that is what an extended reference already
+reaches, and there it is decidable at compile time: the contribution outranks the base.
+Under `extends` and under `<<` it reaches exactly this node, because that is what those two
+already reach, and there nothing is decidable at compile time at all — the ranking is among
+holders of a runtime state, and it is recorded rather than applied. The keyword never widens
+the radius, so the table in §6 stays exhaustive and there is still nothing else to check.
 
 #### It is a prefix on the operand, and the lexing already exists
 
@@ -2686,21 +2701,65 @@ filtered by the flag. **No new structure was invented for it**, and none was nee
 *Fixture:* `projects/override-claim` writes the claimed and the plain spelling side by
 side and pins that their resolved views agree key for key and value for value.
 
-#### Both spellings are writes, and there is exactly one predicate
+#### `override` and `!ref` are orthogonal, and only one of them is a write
 
-`override` declares **more** than `!ref` does, so it entails it. Demanding the tag beside
-it would ask an author to spell the weaker declaration in order to make the stronger one,
-and `extends: override P` and `extends: !ref override P` would then differ by a word that
-changed nothing. They do not differ. Both are `extends: !ref override P`.
+*This subsection replaces one that said the opposite, and the rejected argument is kept because
+it is the one a reader will reconstruct.* It ran: `override` declares **more** than `!ref` does —
+replacement rather than deferral — so it **entails** it, and demanding the tag beside it would
+ask an author to spell the weaker declaration in order to make the stronger one. So
+`extends: override P` and `extends: !ref override P` were one operation, and the second spelling
+differed from the first by a word that changed nothing.
 
-Everything that follows is therefore already written. The target must satisfy
-`writable(target, referencing scope)`, composed over the whole `root → target` path
-(D6.5); failure is **`E0217`**; a `brute` member forces it and the refusal becomes
-**`W0304`** (D6.4b). **No second predicate is written**, which is the whole of the reason
-the two axes cannot come to disagree about who blocked what. The only thing the keyword
-changes in the diagnostic is which word it names: telling an author to drop a `!ref` they
-did not write sends them looking for a token that is not there, and when both are written
-the stronger one is named, because dropping `!ref` alone leaves the write standing.
+The premise is a category error. There is no *more* and *less* here, because the two words are
+not on one scale:
+
+* **`!ref` declares intent to modify.** Gated by the mutability axis, refused with `E0217`,
+  forceable with `brute`. That is the whole of what it says.
+* **`override` declares priority among claimants.** Several nodes may hold `P`; the one that
+  wrote the word **has priority over `P`'s state**. It ranks *holders*, not keys, and it asks
+  the mutability axis for nothing, because a ranking is not a write.
+
+So `extends: !ref override P` reads *I intend to modify `P`, **and** my claim outranks the other
+claimants* — **two statements, not one said twice**. The tell that the collapse was wrong was
+that the difference could not be found: an implementation hunting for one compiler-observable
+consequence of adding `override` to a `!ref` found none, and concluded the two were identical.
+They are not; it was looking along the one axis the two words do not share.
+
+**`extends: override P` is therefore legal, and legal without `!ref`.** It is the ordinary
+extension — `A` is a `P`, the local instance — plus a recorded claim of priority among the nodes
+that hold `P`. No global write, so nothing another node sees moves. No mutation declared, so
+**no mutability gate**: it stands into an `immutable` scope exactly as a plain path does. And it
+contributes no keys, because only `extends: !ref` contributes (D4.3), so there is nothing for
+`W0303` to call inert and nothing for `W0305` to find landing on nothing.
+
+`extends: !ref override P` is unchanged: the compile-time redefinition above, gated as below,
+and now a priority claim as well. `<<: override P` is unchanged and is now *less* than it was —
+no compile-time change, and no capability either, because the node wrote no tag and declared no
+intent to modify anything.
+
+**The claim is a runtime ordering, and the compiler has four jobs and the same four in every
+position: record it, gate what needs gating, emit it, never execute it.** There is no runtime
+here; the artifact that honours the ordering is a separate one, which is the boundary D6.5
+already draws for the mutability axis. And *gate what needs gating* is exactly the tag's gate
+and no other: the target of a `!ref` must satisfy `writable(target, referencing scope)`,
+composed over the whole `root → target` path (D6.5); failure is **`E0217`**; a `brute` member
+forces it and the refusal becomes **`W0304`** (D6.4b). **There is still exactly one predicate**,
+and now for a better reason than before — not because two spellings were folded into one, but
+because only one of the two words asks it anything.
+
+**The diagnostic therefore names `!ref`, however the operand was spelled.** The rule it replaces
+named whichever declaration was "stronger", which only made sense while there was a scale.
+Naming `override` sends an author to remove the one word that changes nothing about the answer.
+And the fix the message offers is now literally true: what is left after dropping the tag is
+`extends: override P`, which is legal and asks the axis for nothing. So the message says that
+too — that the priority claim survives and was never what was refused. **A diagnostic that tells
+an author what they keep is rarer than one that tells them what to remove, and worth more.**
+
+*Fixture:* `projects/override-priority` writes the bare form against a base whose scope says
+nothing about mutability — so every `!ref` into it would be refused and the whole project is
+clean — beside the same operation unqualified. It pins that the two resolve identically, that
+the base holds only what the base wrote, and that a node which is a `P` in a third scope sees
+nothing move.
 
 **Visibility is untouched, and structurally so.** It is decided during path resolution, in
 pass 4, in front of the lookup (D4.12): a target out of view resolves to nothing, so by
@@ -2708,9 +2767,9 @@ the time anything reads the keyword there is no reference left. `override` into 
 scope is `E0216`, exactly as a bare path is, and nothing is recorded as overridden — the
 same separation D6.4b states for `brute`, for the same reason, and asked of the same walk.
 
-*Fixture:* `projects/override-gate` writes both spellings refused (`E0217`), the bare
-`extends: override P` refused identically to the `!ref` one beside it, the forced member
-(`W0304`) and the invisible target (`E0216`).
+*Fixture:* `projects/override-gate` writes the two `!ref` spellings refused (`E0217`) beside
+`<<: override P` and `extends: override P`, which are not refused because they are not writes;
+the forced member and the forced clause operand (`W0304`); and the invisible target (`E0216`).
 
 #### What it is not silent about
 
@@ -3079,6 +3138,41 @@ it**, and the refusal becomes `W0304` — a warning carrying the same composed n
 error would have carried, naming the scope that was overridden and the line where it
 said so.
 
+*How far "under" reaches.* **A `brute` member forces the `!ref`s written in that member's own
+value: the value itself when it is one, and the operands of the clauses that value writes.
+One level, and never transitive.**
+
+```yaml
+brute k: !ref P                  # the member's own value
+brute Amend: !node               # the member's value writes the clause
+  extends: !ref override P       #   -> forced
+brute outer:
+  inner:
+    extends: !ref override P     #   -> not forced; `inner` is a member and carries its own word
+```
+
+The second line is why the rule had to be written down at all. **`brute` is required for
+`!ref override` into a target that is not mutable**, so it has to be reachable from a clause
+operand — and an operator is not a member. `extends:` binds no key, so there is no member on
+the clause itself for the word to sit on, and the only place an author can write it is the
+member whose *value* writes the clause. An implementation that read `brute` off the bound key
+alone made the rule above unspellable: the sole route to a forced redefinition was
+`brute k: !ref override P` in a data position, which declares the capability without performing
+the extension. A requirement with no spelling is not a requirement.
+
+It stops at one level because **clauses are not members**, and that is the whole of the rule:
+anything that is itself a member of the value carries its own word and keeps its own refusal
+until that word is written. The alternative — a `brute` forcing every `!ref` beneath it — was
+rejected on the consequence rather than on the shape. The author who writes `brute` reads the
+block it governs and can see the clause in it; they cannot see a `!ref` twelve levels down in a
+sub-mapping they never opened. **A `brute` that reaches further than the author expects is worse
+than one that reaches too little**, because it silences a refusal nobody asked it to silence,
+and it does so in the one construct whose entire justification is that forcing is never quiet.
+
+The flags are read from the member index rather than re-lexed off the key text, so D4.2's escape
+holds here as everywhere: `"brute k": !ref P` is a member genuinely called `brute k` and forces
+nothing. The word where forcing is decided is the last place an escape should stop working.
+
 *Why forcing exists at all.* The mutability axis is closed by default (D6.4), which is
 right: a scope that says nothing grants nothing. But a closed default with no override
 is not a policy, it is a wall, and the author of a project is not a stranger to it.
@@ -3102,7 +3196,14 @@ this at all*, and a member cannot grant itself sight of what it was never shown 
 `brute` member reaching into a private scope is refused exactly as a bare one is, and
 nothing is recorded as forced. Since `E0216` is raised in resolution, that separation is
 structural rather than ordered: an invisible target never resolves, so the pass that
-consults `brute` never sees it.
+consults `brute` never sees it. **`brute` applies only to what is already within its
+visible scope**, in every position, the new clause position included.
+
+The consequence is worth stating because it is what the separation buys. An author cannot use
+`brute` to find out whether a private scope holds a name: the refusal has the same shape whether
+the target is there or not, which is `E0216`'s existing property (D4.12) and is exactly what
+would be lost if forcing were allowed to reach the first gate. A forced write discloses that it
+was forced; a forced *look* would disclose the thing it was refused.
 
 *Why a flag and not a third axis.* The two axes state what a member **is**, with two
 values and a default worth naming. `brute` states that a member **writes anyway**:
@@ -3110,13 +3211,19 @@ present or absent, no second value, closed like the axes are — a bare member f
 nothing. A flag with nothing to qualify is a name, as with the axes, so a member
 genuinely called `brute` is written `- brute`.
 
-Fixtures: `projects/check-brute/`. Implemented: `member::split`, `check::reach`, `W0304`.
+Fixtures: `projects/check-brute/` — the forced member, the forced clause operand written at a
+document root and at a nested member, the clause **two** levels down that is not forced, the
+quoted prefix that is a name, a `brute` whose target is mutable and which therefore forces
+nothing and is silent, and the invisible target in both positions. Implemented: `member::split`,
+`crate::intern` for the flags, `check::reach`, `W0304`.
 
 *Its counterpart on the other axis of this decision is D4.14's `override`*, which forces
 nothing and is not a second `brute`: `brute` overrides a **refusal to write**, `override`
-overrides a **precedence**. They are prefixes in different positions over disjoint word
-lists — `brute` on the member, `override` on the operand — and they compose:
-`brute claim: !ref override P` forces the gate and replaces the value.
+claims a **priority among the nodes holding a target**. They are prefixes in different positions
+over disjoint word lists — `brute` on the member, `override` on the operand — and neither
+implies the other or the tag. They compose:
+`brute Amend: !node` holding `extends: !ref override P` forces the gate the tag answers and
+ranks the claim, which is three declarations in three positions and no two of them the same.
 
 ### D6.5 — Resolution is path-composed, and needs no narrowing rule
 
@@ -3775,10 +3882,12 @@ clause.
 
 `override` on an operand is not a fourth either. It **inherits the operator's blast
 radius**: `extends: !ref override P` reaches every P because the extended reference
-already does, and `<<: override P` reaches nothing at compile time because inclusion
-already changes nothing. It says *replace rather than defer*, which is a different
-question from *what does this change elsewhere* — so the three answers in the right-hand
-column above are still all the answers there are (D4.14).
+already does, and `extends: override P` and `<<: override P` reach nothing beyond this node
+because those two already change nothing elsewhere. It says *whose claim ranks first*, which is
+a different question from *what does this change elsewhere* — so the three answers in the
+right-hand column above are still all the answers there are (D4.14). And it is not a spelling
+of `!ref`: the tag declares intent to modify, the keyword ranks claimants, and neither implies
+the other.
 
 `P` is a **path**, spelled the way a filesystem is spelled because the scope tree is the
 directory tree: `../shared/Service`, `peer/Service`, `Service`, `Service.tls.port`.

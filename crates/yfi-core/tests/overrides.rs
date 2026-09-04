@@ -1,7 +1,7 @@
 // Written by Richard Christopher, Copyright 2026 NeoTec, LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `override` — the keyword that replaces rather than defers (D4.14).
+//! `override` — the keyword that claims priority among claimants (D4.14).
 //!
 //! Two spellings and two entirely different times. `extends: !ref override P`
 //! is a **compile-time redefinition**: the contribution outranks the base's own
@@ -11,8 +11,11 @@
 //! of it are byte-identical to `<<: P`'s, and what the compiler does is record
 //! the claim, gate it, and emit it.
 //!
-//! Both are writes, so both answer the mutability gate `!ref` already answers,
-//! with the same `E0217` and the same `W0304` when a `brute` member forces it.
+//! **Neither spelling is a write on its own.** `!ref` declares intent to
+//! modify and answers the mutability gate; `override` declares priority among
+//! claimants and answers nothing. So `extends: override P` is legal into an
+//! immutable scope and `extends: !ref override P` is not, and the difference
+//! between them is one declaration rather than a word that changed nothing.
 //! Neither touches visibility, which is decided a pass earlier and is never
 //! forced by anything (D4.12).
 
@@ -189,7 +192,12 @@ fn the_claim_is_carried_into_the_image_where_a_runtime_can_find_it() {
             .map(|edge| (edge.kind.as_str(), edge.capability, edge.overrides))
             .collect()
     };
-    assert_eq!(read(claimed), [("<<", true, true)], "the claim, on the inclusion it qualifies");
+    assert_eq!(
+        read(claimed),
+        [("<<", false, true)],
+        "the claim, on the inclusion it qualifies -- and no capability beside it, because \
+         the node wrote no `!ref` and declared no intent to modify anything"
+    );
     assert_eq!(read(plain), [("<<", false, false)], "and the plain spelling claims nothing");
     let base = by_name(&image, "Base");
     assert_eq!(
@@ -202,14 +210,16 @@ fn the_claim_is_carried_into_the_image_where_a_runtime_can_find_it() {
 // ------------------------------------------------------------------ the gate
 
 #[test]
-fn neither_spelling_applies_without_mut_on_the_target() {
-    // Both forms are writes, and the predicate is the composed one `!ref`
-    // already uses — not a second one. `ovg::lib` is public and says nothing
-    // about mutability, so it is immutable and every unforced write is
-    // refused.
+fn only_the_tag_answers_the_mutability_gate() {
+    // `ovg::lib` is public and says nothing about mutability, so it is
+    // immutable. Two of the five reaches into it are refused and they are
+    // exactly the two that wrote `!ref`: `Amend` and `Forced.refused`. `Take`
+    // and `Bare` write `override` alone — a claim of priority among the nodes
+    // that hold the target, which is not a mutation and has nothing to ask the
+    // axis for.
     let fixture = open("override-gate");
     let rendered = fixture.rendered();
-    assert_eq!(fixture.count(Code::RefNotWritable), 4, "{rendered}");
+    assert_eq!(fixture.count(Code::RefNotWritable), 2, "{rendered}");
     assert!(
         rendered.contains(
             "`override-gate/lib` is `immutable` and `override-gate/patch` is \
@@ -217,25 +227,41 @@ fn neither_spelling_applies_without_mut_on_the_target() {
         ),
         "the note is the composed one, not a second predicate's: {rendered}"
     );
-    // The message names the word the author wrote. `<<: override P` carries no
-    // `!ref`, and telling them to drop one sends them looking for a token that
-    // is not there.
-    assert!(rendered.contains("`override ../lib/Shared` declares"), "{rendered}");
-    assert!(!rendered.contains("`!ref ../lib/Shared` declares"), "{rendered}");
-    // `Bare` writes `extends: override P` with no `!ref` beside it and earns
-    // the same refusal as `Amend`, which writes both: the keyword declares
-    // more than the tag does, so it entails it, and the two are one operation.
-    assert!(rendered.contains("patch.yfy:18:12"), "the bare spelling is a write too: {rendered}");
+    for line in ["patch.yfy:15:7", "patch.yfy:17:12"] {
+        assert!(!rendered.contains(line), "`override` alone is not a write: {rendered}");
+    }
+}
+
+#[test]
+fn the_refusal_names_the_declaration_that_was_refused() {
+    // The gate is `!ref`'s, so the message is `!ref`'s. Naming `override`
+    // would send an author to drop the word that is not being refused, and
+    // dropping it would leave the write standing.
+    let fixture = open("override-gate");
+    let rendered = fixture.rendered();
+    assert!(rendered.contains("`!ref ../lib/Shared` declares"), "{rendered}");
+    assert!(!rendered.contains("`override ../lib/Shared` declares"), "{rendered}");
+    // And the fix it offers is truthful: what is left after dropping the tag
+    // is `extends: override P`, which is legal and asks the axis for nothing.
+    assert!(
+        rendered.contains("the priority claim `override` makes is not what was refused"),
+        "a diagnostic that says what survives is worth more than one that only \
+         says what to remove: {rendered}"
+    );
 }
 
 #[test]
 fn brute_forces_an_overriding_write_exactly_as_it_forces_any_other() {
     // `brute` is a prefix on the **member** and `override` one on the
     // **operand**, so the two compose without either learning about the other.
+    // Two forced writes: the data position `Forced.claim` and the clause
+    // operand `Forceful` writes, which `brute` reaches because `brute` is
+    // *required* for `!ref override` into a scope that is not mutable.
     let fixture = open("override-gate");
     let rendered = fixture.rendered();
-    assert_eq!(fixture.count(Code::ForcedWrite), 1, "{rendered}");
+    assert_eq!(fixture.count(Code::ForcedWrite), 2, "{rendered}");
     assert!(rendered.contains("`brute` forces this write"), "{rendered}");
+    assert!(rendered.contains("patch.yfy:27:17"), "the clause operand is forced: {rendered}");
 }
 
 #[test]
@@ -292,10 +318,20 @@ fn a_data_position_is_not_made_a_reach_by_the_keyword() {
     let loose = fixture.node("claim.yfy", "Loose");
     assert_eq!(fixture.value_of(loose, "region"), "override eu-west");
     assert_eq!(fixture.value_of(loose, "note"), "override Base", "not a path to `Base`");
+    assert_eq!(fixture.value_of(loose, "anchored"), "override ./Base");
     assert!(
         fixture.rendered().is_empty(),
         "and nothing tried to resolve one: {}",
         fixture.rendered()
+    );
+    // The unresolvable spellings above prove nothing on their own: a prefix
+    // read off them lands on no path and so is invisible either way. `./Base`
+    // is the one that would land — an anchored path is a reach in a data
+    // position — so the edge index is where the rule is actually observable.
+    let image = image(&fixture);
+    assert!(
+        image.out(by_name(&image, "Loose")).is_empty(),
+        "reading the prefix here would write a data edge nothing asked for"
     );
 }
 
@@ -368,4 +404,83 @@ fn the_base_declares_what_the_override_installed_and_not_what_it_wrote() {
         assert_eq!(field.key.0, patch, "{name} takes `vessel` from the patch");
         assert_eq!(field.acquired, Acquisition::Installed, "{name}");
     }
+}
+
+// ------------------------------------- priority without the mutation declaration
+
+#[test]
+fn extends_override_is_legal_with_no_ref_beside_it() {
+    // The two declarations are orthogonal. `ovp::base` says nothing about
+    // mutability, so it is immutable and any `!ref` into it is `E0217`; a
+    // priority claim is not a mutation, so this project is clean.
+    let fixture = open("override-priority");
+    assert_eq!(fixture.count(Code::RefNotWritable), 0, "{}", fixture.rendered());
+    assert!(fixture.rendered().is_empty(), "{}", fixture.rendered());
+}
+
+#[test]
+fn a_priority_claim_writes_nothing_to_the_node_it_claims() {
+    // No global write: `Potion` holds exactly what `Potion` wrote. Only
+    // `extends: !ref` installs (D4.3), and `override` qualifies a contribution
+    // rather than creating one.
+    let fixture = open("override-priority");
+    let potion = fixture.node("potion.yfy", "Potion");
+    assert_eq!(fixture.value_of(potion, "vessel"), "vial");
+    assert_eq!(fixture.resolved_keys(potion), ["vessel"]);
+    assert_eq!(fixture.declared_keys(potion), ["vessel"]);
+}
+
+#[test]
+fn a_priority_claim_changes_nothing_another_node_sees() {
+    // `Draught` names neither the patch nor anything it claims, and is a
+    // `Potion`. If a bare `override` had any blast radius at all it would land
+    // here, because that is where an `extends: !ref override` one lands.
+    let fixture = open("override-priority");
+    let draught = fixture.node("use.yfy", "Draught");
+    assert_eq!(fixture.value_of(draught, "vessel"), "vial");
+}
+
+#[test]
+fn the_bare_form_is_the_ordinary_operation_plus_a_recorded_claim() {
+    // The local instance, and nothing else moved: `Claimant` and `Ordinary`
+    // differ by one word in the source and by nothing in the result. The
+    // keyword inherits `extends`'s blast radius, which is this node.
+    let fixture = open("override-priority");
+    let claimant = fixture.node("patch.yfy", "Claimant");
+    let ordinary = fixture.node("patch.yfy", "Ordinary");
+    assert_eq!(fixture.resolved_keys(claimant), fixture.resolved_keys(ordinary));
+    assert_eq!(fixture.value_of(claimant, "vessel"), "flask");
+    assert_eq!(fixture.value_of(claimant, "vessel"), fixture.value_of(ordinary, "vessel"));
+}
+
+#[test]
+fn the_claim_rides_the_extension_edge_and_carries_no_capability() {
+    // What the compiler does with a priority claim is record it, gate what
+    // needs gating and emit it — never execute it; there is no runtime here.
+    // So the only trace is a flag on the edge it qualifies, and `capability`
+    // beside it stays false because no `!ref` was written.
+    let fixture = open("override-priority");
+    let image = image(&fixture);
+    let read = |name: &str| -> Vec<(&'static str, bool, bool)> {
+        image
+            .out(by_name(&image, name))
+            .iter()
+            .filter(|edge| edge.kind == EdgeKind::Extension)
+            .map(|edge| (edge.kind.as_str(), edge.capability, edge.overrides))
+            .collect()
+    };
+    assert_eq!(read("Claimant"), [("extends", false, true)]);
+    assert_eq!(read("Ordinary"), [("extends", false, false)]);
+}
+
+#[test]
+fn a_bare_override_contributes_nothing_so_neither_warning_fires() {
+    // `Extra` writes `vesel`, which the base does not hold — the exact shape
+    // `W0305` exists for. It is silent because there is no contribution: the
+    // keyword ranks holders, and only the tag installs keys.
+    let fixture = open("override-priority");
+    assert_eq!(fixture.count(Code::VacuousOverride), 0, "{}", fixture.rendered());
+    assert_eq!(fixture.count(Code::InertContribution), 0, "{}", fixture.rendered());
+    let potion = fixture.node("potion.yfy", "Potion");
+    assert!(!fixture.resolved_keys(potion).contains(&"vesel".to_owned()));
 }

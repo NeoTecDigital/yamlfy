@@ -48,9 +48,11 @@
 //! # `override` is a prefix on the operand, not on the member
 //!
 //! ```text
-//! extends: !ref override ../lib/Shared   // redefinition, at compile time
+//! extends: !ref override ../lib/Shared   // redefinition, and a claim beside it
+//! extends: override ../lib/Shared        // the claim alone: no write, no gate
 //! <<: override ../lib/Shared             // a runtime claim, and no more
-//! brute claim: !ref override P           // the two prefixes, composed
+//! brute Amend: !node                     // the two prefixes, composed, and the
+//!   extends: !ref override P             //   three declarations all distinct
 //! ```
 //!
 //! Same lexing, different position and different vocabulary — [`split_operand`]
@@ -58,6 +60,12 @@
 //! and inherits that operator's blast radius (D4.14), so there is nothing for
 //! it to mean on a member name; `brute` qualifies what a **member** does with a
 //! refusal, so there is nothing for it to mean on a path.
+//!
+//! Neither implies the other, and neither implies `!ref`. Three positions, three
+//! declarations: the tag says *I intend to modify*, `override` says *my claim
+//! outranks the other claimants*, and `brute` says *write anyway*. Only the
+//! first is gated, only the third forces a gate, and the second asks for
+//! nothing at all.
 
 use crate::scope::{Mutability, Visibility};
 
@@ -129,7 +137,8 @@ pub fn split(text: &str) -> (MemberFlags, &str) {
 /// make `<<: pub Base` quietly resolve to `Base`, which is a spelling the
 /// language never gave a meaning. `override` runs the other way: it qualifies
 /// an operator's operand and has nothing to say about a member, so it is not in
-/// [`split`]'s vocabulary either.
+/// [`split`]'s vocabulary either. And neither of them implies `!ref`, which is
+/// a tag rather than a prefix and declares a third thing again (D4.14).
 ///
 /// The two therefore compose without either learning about the other:
 /// `brute claim: !ref override ../lib/Shared` reads `brute` off the key and
@@ -147,7 +156,7 @@ pub fn split_operand(text: &str) -> (bool, &str) {
     (overrides, rest)
 }
 
-/// The word that replaces rather than defers.
+/// The word that claims priority among a target's holders.
 const OVERRIDE: &str = "override";
 
 /// Consume whitespace-separated words from the front of `text` while `take`

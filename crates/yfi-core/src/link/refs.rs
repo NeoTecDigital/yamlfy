@@ -84,14 +84,20 @@ pub struct Reference {
     /// Whether it was written `!ref`: mutation intent, a reverse dependency
     /// edge, and a capability bound to the key it sits under.
     ///
-    /// `override` implies it. The keyword declares *more* than `!ref` does —
-    /// replacement rather than deferral, or a claim over the target's runtime
-    /// state — so demanding the tag beside it would ask an author to spell the
-    /// weaker declaration in order to make the stronger one (D4.14).
+    /// **`override` does not imply it.** The two declare different things on
+    /// different axes (D4.14): this one says *I intend to modify the target*
+    /// and is what the mutability gate answers, and the keyword below says
+    /// *my claim outranks the other claimants*, which is a ranking of holders
+    /// and asks the axis for nothing. `!ref override P` is two statements, not
+    /// one said twice, so neither flag is read off the other.
     pub capability: bool,
-    /// Whether the operand was written `override`: replace rather than defer.
-    /// What that replaces is the operator's business, and the keyword adds no
-    /// blast radius of its own (D4.14).
+    /// Whether the operand was written `override`: **priority among
+    /// claimants** (D4.14).
+    ///
+    /// Several nodes may hold the target; the one that wrote this has priority
+    /// over the target's state. It is a runtime ordering the compiler records
+    /// and emits and never executes, and it inherits the operator's blast
+    /// radius rather than carrying one of its own.
     pub overrides: bool,
     /// The key this reference binds, when it is a `!ref` written as the value
     /// of a mapping entry. `None` for a plain path and for a sequence element.
@@ -307,7 +313,10 @@ fn one(
     let plain = scalar.style == ScalarStyle::Plain && ast.tag(node).is_none();
     let Site { role, binds, owner } = site(ctx, endpoints, file, node)?;
     let (overrides, written) = prefixed(scalar, (role, tagged));
-    let capability = tagged || overrides;
+    // The tag alone. `override` declares a priority, not a mutation, so it
+    // neither sets this flag nor makes a data position a reach — which is why
+    // `prefixed` is told whether the tag was there rather than asked after.
+    let capability = tagged;
     // Two positions are reaches by declaration rather than by spelling: a
     // `!ref`, and an item of an edge's `connections`. In both the scalar names
     // a node whatever its style, and a scalar that is not a path at all is

@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovp::use
+visibility: public
+---
+# Names neither the patch nor anything it claims, and sees what `Potion`
+# writes. A bare `override` moves nothing another node can observe.
+Draught: !node &Draught
+  extends: ../base/Potion

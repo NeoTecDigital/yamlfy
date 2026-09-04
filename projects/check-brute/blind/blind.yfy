@@ -9,3 +9,9 @@ visibility: public
 # cannot grant itself sight of what it was never shown, so this stays E0216.
 Blind: !node &Blind
   brute peek: !ref ../vault/Secret
+# The same in a clause position, where `brute` now reaches: still E0216, still
+# nothing recorded as forced. `brute` applies only within the scope it can
+# already see, so it can never be used to find out whether a private scope
+# holds a name — the refusal has the same shape either way.
+brute Sightless: !node &Sightless
+  extends: !ref ../vault/Secret

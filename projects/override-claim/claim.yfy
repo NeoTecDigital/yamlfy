@@ -24,3 +24,7 @@ Claimed: !node &Claimed
 Loose: !node &Loose
   pub region: override eu-west
   pub note: override Base
+  # And the sharp case: `./Base` in a data position *is* a path, because an
+  # anchored one is (D4.12). Reading the prefix here would turn this string
+  # into a data edge to `Base` with no diagnostic to notice it by.
+  pub anchored: override ./Base
