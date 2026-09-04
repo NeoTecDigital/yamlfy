@@ -1,0 +1,20 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovr::base
+visibility: public
+mutability: mutable
+---
+# Three directories, because the rules this fixture pins only exist across a
+# scope boundary: a redefinition that reaches a family in another scope, and a
+# private member that must still cross one `extends` step out of this one.
+Potion: !type &Potion
+  # Containment neither republishes nor absorbs (D4.12): `tint` stays the
+  # mixin's, gated where the mixin is, even though an override is installed on
+  # the node that includes it.
+  <<: ../mix/Mixin
+  pub vessel: vial
+  pub cork: wax
+  # A bare member is private (D6.4 one level down).
+  seal: hush

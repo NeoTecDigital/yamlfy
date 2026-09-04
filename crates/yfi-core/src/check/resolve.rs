@@ -131,6 +131,13 @@ fn holds_members(ctx: &Ctx, file: yfi_syntax::FileId, node: yfi_syntax::NodeId) 
         .is_some_and(|items| items.iter().any(|item| ctx.interned.key_of(file, *item).is_some()))
 }
 
+/// One surviving edge, as resolution reads it.
+struct Step {
+    kind: EdgeKind,
+    to: Place,
+    overrides: bool,
+}
+
 struct Run<'a> {
     ctx: &'a Ctx<'a>,
     graph: &'a Graph,
@@ -167,7 +174,7 @@ impl Run<'_> {
     fn dependencies(&self, place: Place) -> Vec<Place> {
         self.edges(place, Direction::Forward)
             .into_iter()
-            .map(|edge| edge.1)
+            .map(|edge| edge.to)
             .filter(|target| *target != place)
             .collect()
     }
@@ -181,7 +188,7 @@ impl Run<'_> {
     /// [`super::scc::back_edges`] chose is a property of the two walks running
     /// in the same order, not a rule. Stating the recovery is what keeps it a
     /// rule.
-    fn edges(&self, place: Place, direction: Direction) -> Vec<(EdgeKind, Place)> {
+    fn edges(&self, place: Place, direction: Direction) -> Vec<Step> {
         let Some(from) = self.graph.vertex_of(place.0, place.1, Stratum::Resolved) else {
             return Vec::new();
         };
@@ -192,11 +199,20 @@ impl Run<'_> {
             .filter_map(|id| self.graph.edge(*id))
             .filter(|edge| edge.direction == direction)
             .filter_map(|edge| {
-                self.graph.vertex(edge.to).map(|held| (edge.kind, (held.file, held.node)))
+                let held = self.graph.vertex(edge.to)?;
+                let to = (held.file, held.node);
+                Some(Step { kind: edge.kind, to, overrides: edge.overrides })
             })
             .collect()
     }
 
+    /// Compose `place`'s four views, D4.7's tiers highest-first.
+    ///
+    /// Tier 5 splits in two, because `override` inverts D4.5's additivity for
+    /// the contribution that writes it and for nothing else (D4.14). An
+    /// overriding installation is absorbed **before** the node's own keys and
+    /// an ordinary one after them, so left-biased absorption keeps expressing
+    /// precedence by call order and no rank is stored per entry.
     fn compose(&mut self, place: Place) {
         let own = self.own_view(place);
         let scope = self.scope_of(place);
@@ -204,12 +220,13 @@ impl Run<'_> {
         for kind in OUTBOUND {
             self.absorb_tier(&mut base, place, kind, scope);
         }
-        let mut declared = own.clone();
-        let mut resolved = base.clone();
-        for source in self.installed_on(place) {
-            let view = self.own_view(source);
-            declared.absorb(&view, Relation::Installation, scope, self.scopes());
-            resolved.absorb(&view, Relation::Installation, scope, self.scopes());
+        let installed = self.installed_on(place);
+        let mut declared = self.installations(&installed, true, scope);
+        let mut resolved = declared.clone();
+        declared.adopt(&own);
+        resolved.adopt(&base);
+        for lower in [&mut declared, &mut resolved] {
+            lower.adopt(&self.installations(&installed, false, scope));
         }
         self.views.own.insert(place, own);
         self.views.base.insert(place, base);
@@ -217,13 +234,23 @@ impl Run<'_> {
         self.views.resolved.insert(place, resolved);
     }
 
+    /// The installations of one rank, folded together in document order.
+    fn installations(&self, installed: &[(Place, bool)], overriding: bool, scope: ScopeId) -> View {
+        let mut view = View::default();
+        for (source, _) in installed.iter().filter(|held| held.1 == overriding) {
+            let held = self.own_view(*source);
+            view.absorb(&held, Relation::Installation, scope, self.scopes());
+        }
+        view
+    }
+
     fn absorb_tier(&self, into: &mut View, place: Place, kind: EdgeKind, scope: ScopeId) {
         let relation = match kind {
             EdgeKind::Inclusion => Relation::Inclusion,
             _ => Relation::Extension,
         };
-        for (_, target) in self.edges(place, Direction::Forward).iter().filter(|e| e.0 == kind) {
-            let Some(view) = self.views.resolved.get(target) else { continue };
+        for step in self.edges(place, Direction::Forward).iter().filter(|e| e.kind == kind) {
+            let Some(view) = self.views.resolved.get(&step.to) else { continue };
             into.absorb(view, relation, scope, self.scopes());
         }
     }
@@ -232,8 +259,8 @@ impl Run<'_> {
     /// so the resulting table is deterministic. Any *observable* disagreement
     /// between two of them is `E0214`, so this order is never load-bearing for
     /// meaning.
-    fn installed_on(&self, place: Place) -> Vec<Place> {
-        let mut out: Vec<Place> = self
+    fn installed_on(&self, place: Place) -> Vec<(Place, bool)> {
+        let mut out: Vec<(Place, bool)> = self
             .edges(place, Direction::Reverse)
             // **Only an extended reference installs.** D4.3 is explicit: of the
             // three things a `!ref` declares, contribution belongs to
@@ -247,12 +274,12 @@ impl Run<'_> {
             // legitimate vocabulary because an unrelated file declared a
             // capability.
             .into_iter()
-            .filter(|edge| edge.0 == EdgeKind::ExtendedReference)
-            .map(|edge| edge.1)
-            .filter(|source| *source != place)
+            .filter(|step| step.kind == EdgeKind::ExtendedReference)
+            .map(|step| (step.to, step.overrides))
+            .filter(|source| source.0 != place)
             .collect();
         out.sort_by_key(|held| {
-            crate::link::source_order(self.ctx.project, self.ctx.interned, held.0, held.1)
+            crate::link::source_order(self.ctx.project, self.ctx.interned, held.0 .0, held.0 .1)
         });
         out
     }

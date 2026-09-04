@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovc
+---
+Amend: !node &Amend
+  extends: !ref override base/Potion
+  pub vessel: flask

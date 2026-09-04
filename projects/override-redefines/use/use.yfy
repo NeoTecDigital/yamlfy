@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovr::use
+visibility: public
+---
+# Neither of these mentions the patch, and neither can see it. Both see what it
+# redefines: that is the operator's blast radius, and `override` inherits it.
+Draught: !node &Draught
+  extends: ../base/Potion
+Holder: !node &Holder
+  <<: ../base/Potion

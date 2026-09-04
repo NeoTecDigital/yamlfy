@@ -573,6 +573,8 @@ parsed and kept.
 | `E0225` | error | a `definition` handle names no position (D4.13) | check |
 | `W0301` | warning | undeclared field on a concrete node (D7.3) | check |
 | `W0303` | warning | inert extended-reference contribution (D4.11) | link, check |
+| `W0304` | warning | a `brute` member forced a write the mutability axis refused (D6.4b) | check |
+| `W0305` | warning | an `override` contribution overrides nothing (D4.14) | check |
 | `E0230` | error | conflicting scope declarations (D6.1) | discover |
 | `E0230` | error | duplicate *definition* in a directory (D6.1) | link |
 | `E0231` | error | bad header axis value (D6.4) | discover |
@@ -582,7 +584,10 @@ parsed and kept.
 **This table is the whole vocabulary.** Every code the compiler can raise is listed
 here and in `Code::all()`, which is what `--deny` validates a configuration against; a
 code in one and not the other would be either a diagnostic no project can configure or
-a configuration key that silences nothing. The numbering after `E0225` resumes at
+a configuration key that silences nothing. `W0304` was such a code — raised, configurable
+and absent from this table from the day D6.4b landed — and the omission is repaired above
+rather than argued about: the claim is only worth making if the table is kept.
+The numbering after `E0225` resumes at
 `E0230`, which begins the scope block; the gap is a block boundary and holds nothing.
 Two numbers appear elsewhere in this document and are deliberately **not** in the table:
 `E0215`, retired below and never to be reused, and `W0302`, which §5 records as a
@@ -638,6 +643,13 @@ rule spans two things only one pass can see. `link` reports a contributed key th
 `check` reports one the base holds only **through its own `<<` or `extends` chain**,
 which needs a resolved base. The sets do not overlap, so no contribution is warned about
 twice.
+**`W0305` does not split, and that asymmetry is deliberate** (D4.14). It is `W0303`'s
+mirror over the same input — *does the base hold this key* — but it has no early half: a
+key the base does not write may still be one it inherits, so `link` cannot tell a vacuous
+`override` from an effective one, and a version that guessed would report the commonest
+correct usage as a mistake. So it is `check`'s alone, against the resolved base.
+`W0304` is `check`'s because it is the same finding as `E0217` with the severity changed
+by a `brute` member, and is raised where that one is.
 `E0222`, `E0231`, `E0240` and `E0241` need only a file class or a project
 tree, both of which `discover` holds, and are raised there in `yfi-core` — `E0241`
 alongside `E0240`, in import resolution, because the scope tree is final by then and
@@ -907,6 +919,18 @@ and the correct statement is:
 > **Three inheritance operators, closed. Four node kinds — `!type`, `!node`, `!edge`
 > and untagged — not closed, and never claimed to be.**
 
+**`override` is the same distinction a third time, and it is worth stating here because
+it looks more like a fourth operator than `!edge` ever did.** It is a keyword on an
+operand (D4.14), and it **inherits the operator's blast radius rather than carrying one
+of its own**: under `extends: !ref` it reaches every `P`, because that is what an
+extended reference already reaches, and under `<<` it reaches exactly the node that wrote
+it, because that is what an inclusion already reaches. It never widens. What it answers
+is not *what does writing this node change elsewhere* — the three answers still exhaust
+that — but *what does this operation do when it lands on something already there*:
+replace, rather than defer. **That is why the operator set is still closed at three**, and
+why the table above is still exhaustive: three spellings, three blast radii, and one
+keyword that borrows whichever it is written under.
+
 ### D4.1 — The three operations
 
 **Inclusion, `<<:`.** A has B as one of its properties. B's keys are absorbed into A;
@@ -1055,6 +1079,11 @@ rows that have to be spotted while reading. Only one of them — `extends: !ref 
 *contributes keys*; the others declare the dependency without installing anything, which
 is why `E0214` and `W0303` remain the extended reference's alone.
 
+*Its neighbour is D4.14's.* `<<: override P` is this row plus a **runtime claim** — P
+belongs to me, and I reserve the right to modify its global state while the graph is
+live. It changes no resolved value either, contributes no keys for the same reason this
+row does not, and is gated by the same `E0217`.
+
 **`<<: !ref P` is a feature, and is meant to be written.** It is the one row of that
 table a reader is most likely to take for an accident of a uniform rule — inclusion plus
 a capability declaration, demanding write access to a base that inclusion does not
@@ -1187,7 +1216,11 @@ B, which is action at a distance with no bound on it at all.
 
 **It is additive.** A's contribution ranks **below everything B already has** — below
 B's own keys, its inclusions and its extensions. An extended reference may *add* keys
-to a base; it may not change one. *Why:* the operation already reaches every B in the
+to a base; it may not change one. *This is now the default rather than the whole rule:*
+D4.14 gives the operand one keyword that inverts it, spelled, gated and recorded, and
+everything below is what that keyword had to argue against.
+
+*Why:* the operation already reaches every B in the
 program, and the difference between adding a property to a family and silently
 redefining one the family already has is the difference between a useful tool and an
 untraceable bug. A contribution the base already defines is inert, and is `W0303`.
@@ -1399,6 +1432,11 @@ Tiers 1–4 are A's own dependencies, read child-to-base. Tier 5 is the reversed
 and is deliberately last: an extended reference adds to a base and never overrides it
 (D4.5).
 
+**Unless the operand says `override`, in which case that one contribution is absorbed
+*above* tier 1** — the ranking splits in two and nothing else about the list moves
+(D4.14). The keyword qualifies one reference's precedence and inherits its blast radius;
+it adds no tier of its own and no fourth operator.
+
 *Why extensions rank below inclusions:* an inclusion is a deliberate, visible,
 node-local statement about *this* node, while a base is a general statement about a
 whole family. The specific must beat the general or the inclusion is unusable, and
@@ -1594,11 +1632,13 @@ their path names (D6.2), and a graph whose values depend on a filename is precis
 what D1.8 refuses. Two contributions of the *same* value are idempotent and legal, for
 `merge-diamond.yml`'s reason.
 
-**`W0303` — inert extended reference contribution.** A contributed key the base
-already defines. By D4.5 it loses, so it does nothing; and by D4.5's identity result
-the author's own node looks correct either way. `W0303` is the only local signal that
-someone wrote `!ref` where they meant an extension, which is what earns it a code of
-its own rather than silence. It is a warning because a contribution partly inert and
+**`W0303` — inert extended reference contribution.** A contributed key the base already
+defines. (Not one contributed with `override`, whose whole purpose is to land on a key
+the base already defines; that spelling inverts the condition and earns `W0305` when it
+lands on nothing — D4.14.) By D4.5 it loses, so it does nothing; and by D4.5's identity
+result the author's own node looks correct either way. `W0303` is the only local signal
+that someone wrote `!ref` where they meant an extension, which is what earns it a code
+of its own rather than silence. It is a warning because a contribution partly inert and
 partly effective is legitimate — an extension may reasonably restate a key it also
 depends on — and `--deny W0303` is available to projects that disagree.
 
@@ -2508,6 +2548,223 @@ every concrete edge of a family that declares its endpoints once in the base.
 * `fixtures/valid/tags.yfy` — the corpus file, which writes `!edge &owned-by` with both
   members.
 
+### D4.14 — `override`
+
+The extended reference can add a property to a family it did not write. It cannot
+**correct** one. D4.5 forbids that on purpose — a contribution ranks below everything
+the base already holds, and a contribution the base already defines is inert and is
+`W0303` — and the argument for it is still right: an operation that reaches every `B` in
+the program must not redefine a key silently.
+
+But *silently* was doing all the work in that sentence, and D4.5 answered a spelling
+problem with a capability restriction. The acts a project actually needs are ordinary:
+a migration that changes a default across a family, a correction to a base frozen before
+the caller existed, an addon that has to say *this value, not that one*. Under D4.5 the
+only routes are editing the base — changing it for everyone, permanently, to serve one
+caller — or forking it. That is `brute`'s argument (D6.4b) about the mutability axis,
+arriving one decision later about precedence, and it gets the same answer: **the act is
+permitted, spelled, gated and recorded.**
+
+```yfy
+extends: !ref override ../base/Potion   // redefinition, at compile time
+<<: override ../base/Potion             // a runtime claim, and nothing else
+```
+
+**`override` inherits the operator's blast radius and adds none of its own, which is why
+the operator set is still closed at three.** It is not a fourth operation and does not
+answer *what does writing this node change elsewhere* — the three answers, nothing,
+nothing and every `P`, still exhaust that question. What it answers is *what does this
+operation do when it lands on something that is already there*: **replace, rather than
+defer**. Under `extends: !ref` that reaches every `P`, because that is what an extended
+reference already reaches; under `<<` it reaches exactly this node, because that is what
+an inclusion already reaches. The keyword never widens the radius, so the table in §6
+stays exhaustive and there is still nothing else to check.
+
+#### It is a prefix on the operand, and the lexing already exists
+
+`override` is a word on the front of a **plain scalar**, read off it exactly as `pub`,
+`mut` and `brute` are read off a member name (D4.12, D6.4b). No tag is introduced, `!ref`
+stays a real tag, nothing about the parse changes, and the escape is D4.2's: a quoted
+operand is literal text, so `<<: "override Base"` names a definition called
+`override Base` and finds none. `member::split`'s rule carries over whole, including the
+one that matters most — **the last word is never a flag** — so a definition genuinely
+called `override` is still reachable by its own name.
+
+**It goes on the operand and `brute` goes on the key, and the two vocabularies are
+disjoint.** This was not obvious and the alternative was tried on paper. `override`
+qualifies what an *operator* does with its *operand*, so there is nothing for it to mean
+on a member name; `brute` qualifies what a *member* does with a refusal, so there is
+nothing for it to mean on a path. Sharing one word list would mean `<<: pub Base` quietly
+resolving to `Base` — a spelling the language never gave a meaning, accepted because a
+lexer was reused past the point where it was about the same thing. So there are two
+readers over one peeling rule. They compose without either learning about the other:
+
+```yfy
+brute claim: !ref override ../lib/Shared   # `brute` off the key, `override` off the value
+```
+
+**Where the prefix is read is D4.12's asymmetry, applied to a new word.** Under `<<:` or
+`extends:` it is read always: a scalar there has been an operand in every version of this
+language, so reading a prefix cannot change the meaning of anything that used to be
+legal. In a **data** position it is read only where `!ref` has already declared the reach,
+because a scalar there has always been data and `region: override eu-west` must stay a
+string no matter what the project happens to contain. It is not read on a `connections`
+item: an endpoint has no operator whose blast radius it could inherit, so there is nothing
+there for it to qualify. And it is not read in base YAML, which interprets no yfi syntax
+at all (D6.6) — `<<: override peer/Thing` in a `.yaml` is the ordinary scalar merge source
+`E0211` refuses.
+
+*Fixtures:* `projects/override-claim` writes the data position that stays data;
+`projects/override-escaped` writes the quoted operand; `projects/override-base-yaml`
+writes the `.yaml`.
+
+#### `extends: !ref override P` — redefinition, at compile time
+
+D4.7's tier 5 splits in two. An **overriding** installation is absorbed above tier 1 and
+an ordinary one stays below tier 4, so for a node A, highest precedence first:
+
+1. `own(X)` for every X holding an **overriding** extended reference to A, in document
+   order,
+2. every key written directly in A,
+3. A's inclusions (`<<`), in written order,
+4. A's extensions, in written order,
+5. the bases of A's extended references, in written order,
+6. `own(X)` for every X holding an ordinary extended reference to A, in document order.
+
+`P` is therefore **born different**: every node that is a `P`, every node that merely
+writes `<<: P`, and `P` itself all see the new value, and none of them mentions the patch
+or can see it. That is the extended reference doing what it already did, with the ranking
+inverted.
+
+**The inversion reaches `declared(P)`, not only `resolved(P)`.** D4.8 validates a concrete
+node against each abstract ancestor's *declared* view, so a redefinition visible only in
+the resolved one would leave every descendant checked against a declaration the program no
+longer has — `W0301`, `E0220` and `E0221` all answering from the superseded text. The two
+views take the tier at the same rank.
+
+**The base is folded in, not carried in.** The overriding tier is absorbed first and the
+base's own composed view is then taken underneath it **as it stands** — same gates, same
+acquisitions. Re-carrying it through an inheritance relation was the obvious
+implementation and is wrong twice over: a member the base *wrote* would arrive already one
+step from its author, and would then vanish from the first descendant outside the base's
+scope (the fault `projects/check-diamond` exists to catch, reached from the other side);
+and a member the base merely **includes** would be re-gated onto the base and called
+descended, which is containment republishing (D4.12) on the strength of a keyword written
+in a third directory.
+
+*Rejected: making `override` a property of the base rather than of the reference* — an
+`open` or `reopenable` keyword on `P` saying it may be redefined. It fails on the same
+ground D6.4 puts the mutability axis on and then goes further: the base already has a way
+to refuse, and it is `immutable`. A second, precedence-only permission would be a keyword
+the base writes to grant something it cannot describe — it does not know which key, or
+whose value — and would be read by reviewers as the general "yes" the mutability axis
+already is. One gate, asked once.
+
+#### `<<: override P` — a runtime claim, and no compile-time change at all
+
+This is the half that is easy to get wrong, so it is stated in the negative first.
+**It alters no resolved value.** The resolved view of the including node, and the resolved
+view of `P`, are byte-identical to what `<<: P` produces. Nothing any other node sees
+moves. It installs no keys — only `extends: !ref` contributes (D4.3) — and it creates no
+`is_a` edge, because inclusion never does (D4.1).
+
+What it says is that `P` is **a member of mine**: this node claims the right to modify
+`P`'s global state at runtime. A registered callback rather than an edit. Several nodes
+may each write `<<: override P` and each is claiming the same right; they do not conflict,
+because none of them has changed anything.
+
+**The compiler's job is to record the claim, gate it, and emit it — never to execute it.**
+The runtime that honours it is a separate artifact and is out of scope, which is the
+boundary D6.5 already draws for the mutability axis and D4.12 draws for a member's `mut`.
+So: resolution is unchanged, the claim is gated like any other write, and it is carried
+into the image as a flag on the **inclusion edge it qualifies** — beside `capability`,
+which is there for the same reason. It rides that edge rather than standing in a table of
+its own because it is one relationship with a second claim on it, and both directions of
+the image's edge index already reach it: the claimants of a node are its inbound run
+filtered by the flag. **No new structure was invented for it**, and none was needed.
+
+*Fixture:* `projects/override-claim` writes the claimed and the plain spelling side by
+side and pins that their resolved views agree key for key and value for value.
+
+#### Both spellings are writes, and there is exactly one predicate
+
+`override` declares **more** than `!ref` does, so it entails it. Demanding the tag beside
+it would ask an author to spell the weaker declaration in order to make the stronger one,
+and `extends: override P` and `extends: !ref override P` would then differ by a word that
+changed nothing. They do not differ. Both are `extends: !ref override P`.
+
+Everything that follows is therefore already written. The target must satisfy
+`writable(target, referencing scope)`, composed over the whole `root → target` path
+(D6.5); failure is **`E0217`**; a `brute` member forces it and the refusal becomes
+**`W0304`** (D6.4b). **No second predicate is written**, which is the whole of the reason
+the two axes cannot come to disagree about who blocked what. The only thing the keyword
+changes in the diagnostic is which word it names: telling an author to drop a `!ref` they
+did not write sends them looking for a token that is not there, and when both are written
+the stronger one is named, because dropping `!ref` alone leaves the write standing.
+
+**Visibility is untouched, and structurally so.** It is decided during path resolution, in
+pass 4, in front of the lookup (D4.12): a target out of view resolves to nothing, so by
+the time anything reads the keyword there is no reference left. `override` into a private
+scope is `E0216`, exactly as a bare path is, and nothing is recorded as overridden — the
+same separation D6.4b states for `brute`, for the same reason, and asked of the same walk.
+
+*Fixture:* `projects/override-gate` writes both spellings refused (`E0217`), the bare
+`extends: override P` refused identically to the `!ref` one beside it, the forced member
+(`W0304`) and the invisible target (`E0216`).
+
+#### What it is not silent about
+
+**`W0303` inverts and therefore goes quiet.** That warning says a contribution is inert
+*because the base already defines the key*, which is precisely the condition an override
+is for. Firing it anyway would make the correct spelling of a redefinition noisier than
+the mistaken one. An overriding contribution is never inert, and pass 4's half of `W0303`
+skips it whole.
+
+**`W0305` — an `override` that overrides nothing.** The mirror, and it earns a code for
+`W0303`'s exact reason: by D4.5's identity result the contributing node's own resolved
+view is the same either way, so a mistyped key is invisible in the file that writes it.
+`vesel: flask` beside a base that declares `vessel` overrides nothing, adds a junk key to
+the family, and — because an extended reference silences `W0301` for every key it installs
+(D4.11) — makes that junk key legitimate vocabulary on every descendant. Nothing else in
+the design catches it. It is a warning rather than an error because a contribution partly
+overriding and partly additive is legitimate, and `--deny W0305` is available to projects
+that disagree.
+
+**`W0305` is one pass's alone, and does not split as `W0303` does.** "The base already
+holds it" is D4.5's three things — the base's own keys, its inclusions and its
+extensions — and only the first is decidable in `link`. `W0303` splits because its early
+half is the common case and is worth reporting early. Its mirror has no early half at
+all: a key the base does not *write* may still be one it *inherits*, so `link` cannot
+tell a vacuous override from an effective one, and a version that guessed would report
+the commonest correct usage as a mistake. So `W0305` is raised once, in `check`, against
+the resolved base.
+
+**Two overriding references that redefine one key differently are `E0214`, not a new
+code.** Nothing ranks two files' claims on a base except their path names (D6.2), and a
+graph whose values depend on a filename is what D1.8 refuses — which is the *whole* of
+`E0214`'s argument, unchanged by the ranking of the tier the two claims sit in. The fault
+is the same fault and the fix is the same fix; a second number would tell an author it was
+a different one. Two claims of the same value remain idempotent and legal, for
+`merge-diamond.yml`'s reason.
+
+**Cycles do not change.** `override` qualifies what an extended reference installs. It
+adds no edge, no vertex and no stratum, so the component `E0212` closes is the one the
+same shape without the word would close (D4.10).
+
+*Fixtures:* `projects/override-redefines` is the clean redefinition across three scopes —
+a base with a public key, a private key and an inclusion, a family that extends it and a
+node that includes it, and a patch in a fourth directory that none of them names;
+`projects/override-nothing` is `W0305`; `projects/override-conflicting` is `E0214`;
+`projects/override-cycle` is `E0212`.
+
+#### The band it is numbered in
+
+`W0305` sits beside `W0304` because **the `E021x` band is full**: `E0210` through `E0219`
+are all spent, and `E0215` is retired and is never reused (§4). That constrained nothing,
+because the only new *error* condition this decision produces is already `E0214`; had it
+produced one, the block boundary would have had to move rather than the hole be filled.
+Recorded here so the next decision does not rediscover it.
+
 ---
 
 ## 7. Anchor state sequences
@@ -2854,6 +3111,12 @@ nothing. A flag with nothing to qualify is a name, as with the axes, so a member
 genuinely called `brute` is written `- brute`.
 
 Fixtures: `projects/check-brute/`. Implemented: `member::split`, `check::reach`, `W0304`.
+
+*Its counterpart on the other axis of this decision is D4.14's `override`*, which forces
+nothing and is not a second `brute`: `brute` overrides a **refusal to write**, `override`
+overrides a **precedence**. They are prefixes in different positions over disjoint word
+lists — `brute` on the member, `override` on the operand — and they compose:
+`brute claim: !ref override P` forces the gate and replaces the value.
 
 ### D6.5 — Resolution is path-composed, and needs no narrowing rule
 
@@ -3509,6 +3772,13 @@ That closure is about the operators and about nothing else: the **node kinds** a
 closed and were never claimed to be — `!edge` is a fourth one, added after the sentence
 was first written, and it inherits with these same three and adds no way to read a
 clause.
+
+`override` on an operand is not a fourth either. It **inherits the operator's blast
+radius**: `extends: !ref override P` reaches every P because the extended reference
+already does, and `<<: override P` reaches nothing at compile time because inclusion
+already changes nothing. It says *replace rather than defer*, which is a different
+question from *what does this change elsewhere* — so the three answers in the right-hand
+column above are still all the answers there are (D4.14).
 
 `P` is a **path**, spelled the way a filesystem is spelled because the scope tree is the
 directory tree: `../shared/Service`, `peer/Service`, `Service`, `Service.tls.port`.

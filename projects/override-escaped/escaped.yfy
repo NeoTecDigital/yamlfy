@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ove
+---
+Base: !type &Base
+  pub port: !!int 80
+# D4.2's escape, one level down: the prefix is read off a **plain** scalar, so
+# a quoted operand is literal text and names a definition called
+# `override Base`, which there is not. E0213, not an inclusion of `Base`.
+Escaped: !node &Escaped
+  pub quoted: !ref "override Base"

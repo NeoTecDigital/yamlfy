@@ -1,0 +1,11 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovc
+---
+# The second redefinition of one key. Nothing ranks these two but their
+# filenames, which D1.8 refuses, so it is E0214 exactly as an additive pair is.
+Revise: !node &Revise
+  extends: !ref override base/Potion
+  pub vessel: pot

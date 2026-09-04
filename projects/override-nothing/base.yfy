@@ -1,0 +1,8 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovn
+---
+Potion: !type &Potion
+  pub vessel: vial

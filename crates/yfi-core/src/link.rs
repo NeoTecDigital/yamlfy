@@ -30,6 +30,7 @@
 
 mod clause;
 mod contrib;
+mod failed;
 pub(crate) mod graph;
 mod kernel;
 pub(crate) mod keys;
@@ -131,9 +132,10 @@ impl Linked {
     /// Every extended-reference contribution, in document order.
     ///
     /// A contribution carries `own(A)` — never `R(A)` — and is **additive
-    /// only**: it ranks below everything the base already has (D4.5). Pass 5
-    /// obeys that rule; pass 4 records what it needs to, including which keys
-    /// are inert.
+    /// unless it was written `override`**: it ranks below everything the base
+    /// already has (D4.5), or, with the keyword, above it (D4.14). Pass 5 obeys
+    /// that ranking; pass 4 records what it needs to, including which keys are
+    /// inert and which contributions override.
     #[must_use]
     pub fn contributions(&self) -> &[Contribution] {
         &self.contributions

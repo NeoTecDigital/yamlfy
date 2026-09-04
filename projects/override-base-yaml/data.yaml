@@ -1,0 +1,9 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Base YAML holds no yfi syntax at all (D6.6), so `override` is two words of a
+# string here and `<<` gets a scalar it cannot use: E0211, and no inclusion of
+# `Thing`.
+record:
+  <<: override source/Thing
+  region: eu-west

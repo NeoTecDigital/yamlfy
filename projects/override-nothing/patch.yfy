@@ -1,0 +1,13 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovn
+---
+# `vessel` overrides the base's own key and is silent. `vesel` is the typo
+# W0305 exists for: it lands on no key of the base, so `override` did nothing
+# and the author cannot tell from their own node (D4.5's identity result).
+Amend: !node &Amend
+  extends: !ref override base/Potion
+  pub vessel: flask
+  pub vesel: pot

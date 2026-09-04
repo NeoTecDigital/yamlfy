@@ -1,0 +1,15 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovcy
+---
+# One stratified graph, one cycle rule (D4.10). `override` qualifies what an
+# extended reference installs and adds no edge, so this is E0212 exactly as the
+# same shape without the word is.
+Alpha: !node &Alpha
+  extends: !ref override Beta
+  pub a: 1
+Beta: !type &Beta
+  extends: Alpha
+  pub b: 2

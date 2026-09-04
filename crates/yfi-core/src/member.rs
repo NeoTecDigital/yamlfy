@@ -44,6 +44,20 @@
 //! — because a write that overrides a refusal is the one act in the language
 //! that must be visible in the source that performs it. Forcing is never
 //! quiet: it is written here and recorded as `W0304` where it takes effect.
+//!
+//! # `override` is a prefix on the operand, not on the member
+//!
+//! ```text
+//! extends: !ref override ../lib/Shared   // redefinition, at compile time
+//! <<: override ../lib/Shared             // a runtime claim, and no more
+//! brute claim: !ref override P           // the two prefixes, composed
+//! ```
+//!
+//! Same lexing, different position and different vocabulary — [`split_operand`]
+//! says why. `override` qualifies what an **operator** does with its operand
+//! and inherits that operator's blast radius (D4.14), so there is nothing for
+//! it to mean on a member name; `brute` qualifies what a **member** does with a
+//! refusal, so there is nothing for it to mean on a path.
 
 use crate::scope::{Mutability, Visibility};
 
@@ -93,17 +107,63 @@ impl MemberFlags {
 #[must_use]
 pub fn split(text: &str) -> (MemberFlags, &str) {
     let mut flags = MemberFlags::default();
-    let mut rest = text.trim();
-    while let Some((word, tail)) = rest.split_once(char::is_whitespace) {
+    let rest = peel(text, |word| {
         match word {
             "pub" | "public" => flags.visibility = Some(Visibility::Public),
             "mut" | "mutable" => flags.mutability = Some(Mutability::Mutable),
             "brute" => flags.brute = true,
-            _ => break,
+            _ => return false,
+        }
+        true
+    });
+    (flags, rest)
+}
+
+/// Split an **operand** prefix off a path, returning whether it said `override`
+/// and the path itself (D4.14).
+///
+/// The same lexing as [`split`] — a word peeled off a plain scalar, the last
+/// word never a flag — over a different vocabulary, because an operand is a
+/// **path** and not a member. `pub`, `mut` and `brute` state what a member *is*
+/// or *does* and have nothing to qualify on a path; consuming them here would
+/// make `<<: pub Base` quietly resolve to `Base`, which is a spelling the
+/// language never gave a meaning. `override` runs the other way: it qualifies
+/// an operator's operand and has nothing to say about a member, so it is not in
+/// [`split`]'s vocabulary either.
+///
+/// The two therefore compose without either learning about the other:
+/// `brute claim: !ref override ../lib/Shared` reads `brute` off the key and
+/// `override` off the value.
+#[must_use]
+pub fn split_operand(text: &str) -> (bool, &str) {
+    let mut overrides = false;
+    let rest = peel(text, |word| {
+        if word != OVERRIDE {
+            return false;
+        }
+        overrides = true;
+        true
+    });
+    (overrides, rest)
+}
+
+/// The word that replaces rather than defers.
+const OVERRIDE: &str = "override";
+
+/// Consume whitespace-separated words from the front of `text` while `take`
+/// accepts them, and return what is left.
+///
+/// **The last word is never offered**, which is the whole of the "a prefix with
+/// nothing to qualify is a name" rule and is why both readers get it for free.
+fn peel(text: &str, mut take: impl FnMut(&str) -> bool) -> &str {
+    let mut rest = text.trim();
+    while let Some((word, tail)) = rest.split_once(char::is_whitespace) {
+        if !take(word) {
+            break;
         }
         rest = tail.trim_start();
     }
-    (flags, rest)
+    rest
 }
 
 #[cfg(test)]

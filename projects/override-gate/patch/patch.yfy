@@ -1,0 +1,27 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovg::patch
+visibility: public
+---
+# `ovg::lib` is public and says nothing about mutability, so it is immutable.
+# `override` is a write on both spellings and neither is exempt: E0217.
+Amend: !node &Amend
+  extends: !ref override ../lib/Shared
+Take: !node &Take
+  <<: override ../lib/Shared
+# `override` declares more than `!ref` does, so it entails it: this is the same
+# operation as `Amend`'s and earns the same refusal. Spelling the weaker
+# declaration is not a precondition for making the stronger one.
+Bare: !node &Bare
+  extends: override ../lib/Shared
+# `brute` is a prefix on the member and `override` one on the operand, so the
+# two compose: the forced write is recorded as W0304 and performed anyway.
+Forced: !node &Forced
+  brute claim: !ref override ../lib/Shared
+  refused: !ref override ../lib/Shared
+# Visibility is decided in pass 4, in front of the lookup, and `override`
+# changes nothing about that: a target out of view resolved to nothing.
+Blind: !node &Blind
+  peek: !ref override ../vault/Secret

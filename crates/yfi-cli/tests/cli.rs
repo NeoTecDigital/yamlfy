@@ -265,3 +265,24 @@ fn a_deny_flag_reaches_a_code_only_the_semantic_passes_raise() {
     let allowed = yamlfy(&["--allow", "W0303", "check", path.to_str().unwrap()]);
     assert!(!stdout(&allowed).contains("W0303"), "{}", stdout(&allowed));
 }
+
+#[test]
+fn a_deny_flag_reaches_the_override_warning() {
+    // `W0305` is `check`'s and is the newest code in the table, so this is the
+    // end-to-end proof of the promise §4 makes about every code: it prints, it
+    // is denied, and it is allowed. `--deny` is validated against `Code::all()`,
+    // so a variant missing from that list would fail here as an unknown code
+    // rather than as a missing diagnostic.
+    let path = project("override-nothing");
+    let quiet = yamlfy(&["check", path.to_str().unwrap()]);
+    assert!(quiet.status.success(), "{}", stdout(&quiet));
+    assert!(stdout(&quiet).contains("warning[W0305]"), "{}", stdout(&quiet));
+
+    let strict = yamlfy(&["--deny", "W0305", "check", path.to_str().unwrap()]);
+    let text = stdout(&strict);
+    assert!(!strict.status.success(), "{text}");
+    assert!(text.contains("error[W0305]"), "{text}");
+
+    let allowed = yamlfy(&["--allow", "W0305", "check", path.to_str().unwrap()]);
+    assert!(!stdout(&allowed).contains("W0305"), "{}", stdout(&allowed));
+}

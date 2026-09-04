@@ -176,6 +176,23 @@ pub struct Edge {
     /// Every edge carrying it has a dependency running the other way, and those
     /// are the ones an audit reads.
     pub capability: bool,
+    /// Whether it was written `override` (D4.14).
+    ///
+    /// On an [`EdgeKind::ExtendedReference`] this is a record of a compile-time
+    /// decision the image has already applied: the contribution outranked the
+    /// base, so the views here hold the result and nothing downstream re-derives
+    /// it. On an [`EdgeKind::Inclusion`] it is the **runtime claim** — *this
+    /// node reserves the right to modify the target's global state* — and it is
+    /// the only thing that spelling leaves behind, because it moves no resolved
+    /// value at compile time. The compiler records it, gates it like any write
+    /// and emits it here; **executing it belongs to a runtime**, which is a
+    /// separate artifact (D6.5).
+    ///
+    /// It rides the edge it qualifies rather than standing in a table of its
+    /// own, for the reason [`Edge::capability`] does: it is one relationship
+    /// with a second claim on it, and both indexes already reach it — the
+    /// claimants of a node are `inc(node)` filtered by this flag.
+    pub overrides: bool,
     /// The member that carries a data edge, when one does; for an
     /// [`EdgeKind::Connection`] it is the **handle** `definition` gives that
     /// endpoint, when it gives it one. `None` for an inheritance edge, whose

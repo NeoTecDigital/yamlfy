@@ -8,6 +8,18 @@
 //! "the base already defines" means `own(base)`, the keys the base writes
 //! directly; a key it holds only through its own `<<` or `extends` chain is
 //! `check`'s half of `W0303`, over disjoint input (§4).
+//!
+//! **`override` inverts the condition, and therefore silences this half
+//! entirely** (D4.14). An overriding contribution outranks the base, so a key
+//! the base already defines is exactly what it is *for* and is never inert;
+//! what it wants reporting is the opposite case — a key the base does not hold
+//! at all — and that is decidable only against a resolved base, so `W0305` is
+//! [`crate::check::inert`]'s alone rather than split across two passes.
+//!
+//! `E0214` needs no such split. Two overriding claims on one key disagree for
+//! the reason two additive ones do, are ranked by nothing but their filenames,
+//! and have the same fix; a second number would say the fault was a different
+//! one.
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -43,6 +55,9 @@ pub struct Contribution {
     pub node: NodeId,
     /// The `!ref` operand that made the contribution.
     pub operand: NodeId,
+    /// Whether the operand was written `override`: the contribution **outranks**
+    /// the base's own keys rather than ranking below them (D4.14).
+    pub overrides: bool,
     /// `own(A)`, never `R(A)`: if the base absorbed `R(A)` then `R(B)` would
     /// depend on `R(A)`, which depends on `R(B)` because A is a type of B, and
     /// every extended reference would be a cycle.
@@ -85,6 +100,7 @@ fn gather(ctx: &Ctx, clauses: &[Clause]) -> Vec<Contribution> {
                 file: clause.file,
                 node: clause.owner,
                 operand: operand.node,
+                overrides: operand.overrides,
                 keys,
             });
         }
@@ -93,12 +109,20 @@ fn gather(ctx: &Ctx, clauses: &[Clause]) -> Vec<Contribution> {
 }
 
 /// Flag every contributed key the base already writes, and warn about it.
+///
+/// An **overriding** contribution is never inert: it wins over everything the
+/// base holds, so the key it lands on is the point rather than the fault. The
+/// mirror finding — that it landed on nothing — is `W0305` and needs a resolved
+/// base, so it is not raised here.
 fn mark_inert(
     ctx: &Ctx,
     table: &Table,
     contribution: &mut Contribution,
     diagnostics: &mut Diagnostics,
 ) {
+    if contribution.overrides {
+        return;
+    }
     let base = own_keys(ctx, contribution.base.0, contribution.base.1);
     let path = table.path_of(contribution.base.0, contribution.base.1).unwrap_or("the base");
     for key in &mut contribution.keys {

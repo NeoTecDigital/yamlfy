@@ -56,10 +56,24 @@ pub struct Operand {
     /// operation: `extends` plus [`OperandForm::Ref`] is the only spelling that
     /// installs a reverse edge.
     pub form: OperandForm,
+    /// Whether the operand was written `override` (D4.14). It qualifies the
+    /// clause rather than replacing it: under `extends: !ref` the contribution
+    /// **outranks** the base instead of ranking below it, and under `<<` it is
+    /// a runtime claim that moves no compile-time value at all.
+    pub overrides: bool,
     /// The mapping it names.
     pub target: (FileId, NodeId),
     /// The operand's span.
     pub span: Span,
+}
+
+/// An operand's written form, before it is known to name a mapping.
+#[derive(Clone, Copy)]
+struct Written {
+    node: NodeId,
+    form: OperandForm,
+    overrides: bool,
+    span: Span,
 }
 
 /// One `<<` or `extends` entry.
@@ -140,7 +154,8 @@ fn one(
     let ast = ctx.ast(file).expect("a discovered file has an arena");
     let span = ast.node(node).span;
     if ast.entries(node).is_some() {
-        return Some(Operand { node, form: OperandForm::Inline, target: (file, node), span });
+        let form = OperandForm::Inline;
+        return Some(Operand { node, form, overrides: false, target: (file, node), span });
     }
     if ast.alias(node).is_some() {
         return through_alias(ctx, file, kind, node, span, diagnostics);
@@ -148,7 +163,8 @@ fn one(
     if let Some(reference) = refs.get(file, node) {
         let target = reference.target?;
         let form = if reference.capability { OperandForm::Ref } else { OperandForm::Path };
-        return accept(ctx, kind, node, span, form, target, diagnostics);
+        let written = Written { node, form, overrides: reference.overrides, span };
+        return accept(ctx, kind, written, target, diagnostics);
     }
     // Reached only for a directly written operand and for an element of the
     // flat sequence form, so a sequence here is the nested-sequence case.
@@ -186,20 +202,20 @@ fn through_alias(
         return None;
     }
     let target = ast.alias_binding(node)?;
-    accept(ctx, kind, node, span, OperandForm::Alias, target, diagnostics)
+    let written = Written { node, form: OperandForm::Alias, overrides: false, span };
+    accept(ctx, kind, written, target, diagnostics)
 }
 
 /// Accept an operand that names `target`, or report what it named instead.
 fn accept(
     ctx: &Ctx,
     kind: ClauseKind,
-    node: NodeId,
-    span: Span,
-    form: OperandForm,
+    written: Written,
     target: (FileId, NodeId),
     diagnostics: &mut Diagnostics,
 ) -> Option<Operand> {
     let named = ctx.ast(target.0)?;
+    let Written { node, form, overrides, span } = written;
     if named.entries(target.1).is_none() {
         let what = describe(named, target.1);
         let through = match form {
@@ -210,7 +226,7 @@ fn accept(
         diagnostics.push(illegal(kind, span, format!("{through} {what}")));
         return None;
     }
-    Some(Operand { node, form, target, span })
+    Some(Operand { node, form, overrides, target, span })
 }
 
 fn illegal(kind: ClauseKind, span: Span, found: String) -> Diagnostic {

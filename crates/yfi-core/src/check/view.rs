@@ -193,6 +193,21 @@ impl View {
         self.fields.push(field);
     }
 
+    /// Take a lower-precedence view's fields **as they stand**, gates and
+    /// acquisitions untouched.
+    ///
+    /// Not [`View::absorb`]: nothing crosses a relationship here. The one
+    /// caller is D4.14's overriding installation, where a base's own composed
+    /// view is folded in *underneath* keys already claimed — the fields are
+    /// already the holder's and already gated for it, and re-carrying them
+    /// would re-gate a member onto the scope it is already gated to and
+    /// demote its acquisition a second time.
+    pub(crate) fn adopt(&mut self, lower: &View) {
+        for field in &lower.fields {
+            self.push(*field);
+        }
+    }
+
     /// Absorb a lower-precedence view under one relationship.
     pub(crate) fn absorb(
         &mut self,

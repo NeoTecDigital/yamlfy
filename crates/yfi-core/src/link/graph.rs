@@ -121,6 +121,12 @@ pub struct Edge {
     pub kind: EdgeKind,
     /// Forward or reverse.
     pub direction: Direction,
+    /// Whether the operand was written `override` (D4.14). Read by resolution
+    /// off the **reverse** edge of an extended reference, where it decides
+    /// whether the installed keys rank above the base or below it; it adds no
+    /// edge and no vertex of its own, so a cycle is the one the same shape
+    /// without the word would close.
+    pub overrides: bool,
     /// The operand that names the target.
     pub span: Span,
     /// The clause key that wrote the operator.
@@ -260,6 +266,7 @@ fn capability(graph: &mut Graph, reference: &Reference) {
         to: own,
         kind: EdgeKind::Capability,
         direction: Direction::Reverse,
+        overrides: reference.overrides,
         span: reference.span,
         site: reference.span,
     });
@@ -278,6 +285,7 @@ fn add(graph: &mut Graph, clause: &Clause, operand: &Operand) {
         to: base,
         kind,
         direction: Direction::Forward,
+        overrides: operand.overrides,
         span: operand.span,
         site: clause.site,
     };
@@ -305,6 +313,7 @@ mod tests {
             operands: vec![Operand {
                 node: NodeId(target),
                 form,
+                overrides: false,
                 target: (FileId(0), NodeId(target)),
                 span: span(),
             }],

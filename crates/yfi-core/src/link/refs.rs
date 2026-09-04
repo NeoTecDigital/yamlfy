@@ -18,16 +18,24 @@
 //!
 //! In a base YAML file `!ref` is an unrecognised tag on a value and nothing
 //! else (D6.6), so pass 3 classifies it as [`TagKind::Other`] there and this
-//! pass never sees it.
+//! pass never sees it. [`collect`] goes further and skips such a file whole:
+//! a `.yaml` writes no references at all, which is why the `override` prefix
+//! needs no file-class test of its own.
+//!
+//! What a path that did **not** land is reported as lives in
+//! [`super::failed`]; this module decides where a path is read and what it
+//! resolves to.
 
 use std::collections::{HashMap, HashSet};
 
-use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, NodeId, ScalarStyle, Span};
+use yfi_syntax::{Diagnostics, FileId, NodeId, ScalarStyle, Span};
 
+use super::failed::failed;
 use super::keys::is_extends_key;
 use super::path::{self, Failure, Path, Space};
 use super::table::Table;
 use super::Ctx;
+use crate::member;
 use crate::tags::TagKind;
 
 /// Which operator a reference is an operand of.
@@ -75,7 +83,16 @@ pub struct Reference {
     pub role: RefRole,
     /// Whether it was written `!ref`: mutation intent, a reverse dependency
     /// edge, and a capability bound to the key it sits under.
+    ///
+    /// `override` implies it. The keyword declares *more* than `!ref` does —
+    /// replacement rather than deferral, or a claim over the target's runtime
+    /// state — so demanding the tag beside it would ask an author to spell the
+    /// weaker declaration in order to make the stronger one (D4.14).
     pub capability: bool,
+    /// Whether the operand was written `override`: replace rather than defer.
+    /// What that replaces is the operator's business, and the keyword adds no
+    /// blast radius of its own (D4.14).
+    pub overrides: bool,
     /// The key this reference binds, when it is a `!ref` written as the value
     /// of a mapping entry. `None` for a plain path and for a sequence element.
     pub binds: Option<Box<str>>,
@@ -120,6 +137,7 @@ struct Occurrence {
     path: Option<Path>,
     role: RefRole,
     capability: bool,
+    overrides: bool,
     binds: Option<Box<str>>,
     owner: Option<NodeId>,
     span: Span,
@@ -166,7 +184,7 @@ pub(crate) fn resolve(
     let mut refs = References { items: Vec::new(), index: HashMap::new() };
     for (held, outcome) in occurrences.into_iter().zip(outcomes) {
         if let Err(failure) = &outcome {
-            diagnostics.push(failed(&held, failure));
+            diagnostics.push(failed(&held.text, held.span, failure));
         }
         refs.index.insert((held.file, held.node), refs.items.len());
         refs.items.push(Reference {
@@ -176,6 +194,7 @@ pub(crate) fn resolve(
             path: held.path,
             role: held.role,
             capability: held.capability,
+            overrides: held.overrides,
             binds: held.binds,
             owner: held.owner,
             target: outcome.ok(),
@@ -283,10 +302,12 @@ fn one(
     document: u32,
 ) -> Option<Occurrence> {
     let ast = ctx.ast(file)?;
-    let capability = ctx.interned.tag_kind(file, node) == Some(TagKind::Ref);
+    let tagged = ctx.interned.tag_kind(file, node) == Some(TagKind::Ref);
     let scalar = ast.scalar(node)?;
     let plain = scalar.style == ScalarStyle::Plain && ast.tag(node).is_none();
     let Site { role, binds, owner } = site(ctx, endpoints, file, node)?;
+    let (overrides, written) = prefixed(scalar, (role, tagged));
+    let capability = tagged || overrides;
     // Two positions are reaches by declaration rather than by spelling: a
     // `!ref`, and an item of an edge's `connections`. In both the scalar names
     // a node whatever its style, and a scalar that is not a path at all is
@@ -296,7 +317,7 @@ fn one(
     if !declared && !plain {
         return None;
     }
-    let text: Box<str> = scalar.value.trim().into();
+    let text: Box<str> = written.into();
     // An untagged scalar in a data position is data unless the path is anchored.
     let path = match path::parse(&text) {
         Some(path) if declared || role != RefRole::Data || path.anchored => Some(path),
@@ -304,7 +325,50 @@ fn one(
         _ => return None,
     };
     let span = ast.node(node).span;
-    Some(Occurrence { file, node, document, text, path, role, capability, binds, owner, span })
+    Some(Occurrence {
+        file,
+        node,
+        document,
+        text,
+        path,
+        role,
+        capability,
+        overrides,
+        binds,
+        owner,
+        span,
+    })
+}
+
+/// Take an `override` prefix off an operand, and say whether one was there
+/// (D4.14).
+///
+/// **Read only where the position is a reach the language declared**: under
+/// `<<:` or `extends:`, where a scalar has been an operand in every version of
+/// this language, and in a data position only where `!ref` has already declared
+/// the reach. Reading it off a data scalar that declared nothing would turn
+/// `region: override eu-west` from a string into a path, which is the
+/// incidental signal D6.6 refuses one level up — and `!ref override P` was
+/// `E0213` before this decision, so nothing that used to be legal moves.
+///
+/// Not read on a `connections` item: an endpoint has no operator whose blast
+/// radius the keyword could inherit, so there is nothing there for it to
+/// qualify. Not read off a quoted scalar, which is D4.2's escape one level
+/// down — `<<: "override Base"` names a definition called `override Base` and
+/// reaches nothing. And not read in base YAML, which needs no test here
+/// because [`collect`] never offers one: a `.yaml` writes no references at all,
+/// so `<<: override peer/Thing` there is the ordinary scalar merge source
+/// `E0211` refuses (D6.6).
+///
+/// `site` is the reference's role and whether it carried `!ref`.
+fn prefixed(scalar: &yfi_syntax::Scalar, site: (RefRole, bool)) -> (bool, &str) {
+    let text = scalar.value.trim();
+    let operand = matches!(site.0, RefRole::Inclusion | RefRole::Extension)
+        || (site.1 && site.0 == RefRole::Data);
+    match operand && scalar.style == ScalarStyle::Plain {
+        true => member::split_operand(text),
+        false => (false, text),
+    }
 }
 
 /// Where a reference sits.
@@ -376,82 +440,4 @@ fn site(
 /// An item of a sequence some `!edge` reads: an endpoint of that edge.
 fn connection(owner: Option<NodeId>) -> Site {
     Site { role: RefRole::Connection, binds: None, owner }
-}
-
-/// The diagnostic a failed resolution earns. Every failure is `E0213` — the
-/// path named nothing — except a member miss, which is `E0218` (the path landed
-/// and the member did not, and the two have different fixes), and a landing the
-/// referencing scope cannot see, which is `E0216`.
-///
-/// `E0216`'s note carries **no span**. Every other note here points at
-/// something the author can read; that one would point inside the scope the
-/// gate just refused, which is the disclosure the gate exists to prevent.
-fn failed(held: &Occurrence, failure: &Failure) -> Diagnostic {
-    let (code, message, note) = explain(&held.text, failure);
-    Diagnostic::new(code, held.span, message).with_note(note, None)
-}
-
-/// The code, the message and the note one failure earns. Split out because the
-/// table is the interesting part and a reader comparing two rows should not
-/// have to step over the diagnostic plumbing to do it.
-fn explain(text: &str, failure: &Failure) -> (Code, String, String) {
-    match failure {
-        Failure::AboveRoot => (
-            Code::UnresolvedRef,
-            format!("`{text}` ascends past the project root"),
-            "`..` walks up the scope tree the way it walks up directories, and the root has no \
-             parent"
-                .to_owned(),
-        ),
-        Failure::NoSegment(segment) => (
-            Code::UnresolvedRef,
-            format!("`{text}` names nothing: there is no `{segment}` here"),
-            "a segment names a directory of this project or a `.yfy` beside the file that wrote \
-             the path"
-                .to_owned(),
-        ),
-        Failure::NotADirectory(segment) => (
-            Code::UnresolvedRef,
-            format!("`{text}` looks for `{segment}` inside a file"),
-            "a file holds definitions, not directories; address a member with `.` instead"
-                .to_owned(),
-        ),
-        Failure::NoDefinition(name, at) => (
-            Code::UnresolvedRef,
-            format!("`{text}` names nothing: no definition called `{name}` in `{at}`"),
-            "only an anchored collection is addressable; an anchored scalar is a value, not a \
-             type"
-                .to_owned(),
-        ),
-        Failure::BindingCycle => (
-            Code::UnresolvedRef,
-            format!("`{text}` resolves through a `!ref` binding that resolves back to itself"),
-            "a binding names a target, so a binding that names itself names nothing".to_owned(),
-        ),
-        Failure::NotAPath => (
-            Code::UnresolvedRef,
-            format!("`{text}` is not a path"),
-            "a path is written `../dir/Name`, `peer/Name`, `Name` or `Name.member`; `!ref` takes \
-             one and nothing else"
-                .to_owned(),
-        ),
-        Failure::NotVisible(blocker, observer) => (
-            Code::RefNotVisible,
-            format!(
-                "`{text}` names a definition this scope cannot see; the path grants the reach, \
-                 and `private` decides that you may not have it"
-            ),
-            format!(
-                "`{blocker}` is `private` and `{observer}` is outside it; both axes compose \
-                 over the whole path from the root"
-            ),
-        ),
-        Failure::NoMember(name) => (
-            Code::UnresolvedMember,
-            format!("`{text}` addresses `{name}`, which the node it names does not hold"),
-            "member access reads the keys the target writes; a key it inherits is not addressable \
-             until it is written"
-                .to_owned(),
-        ),
-    }
 }

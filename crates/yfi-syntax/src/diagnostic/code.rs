@@ -129,6 +129,16 @@ pub enum Code {
     /// A `brute` member forced a write the mutability axis refused. The write
     /// stands; the record is what keeps forcing from being quiet.
     ForcedWrite,
+    /// An `override` contribution overrides nothing: the base does not hold the
+    /// key, so the keyword changed no precedence and the contribution is the
+    /// ordinary additive one it would have been unwritten.
+    ///
+    /// The mirror of [`Code::InertContribution`] and a warning for the same
+    /// reason — by D4.5's identity result the contributing node looks correct
+    /// either way, so a mistyped key is invisible in the file that writes it.
+    /// Allocated in the `W030x` band rather than beside `E0217`: the `E021x`
+    /// band is full, and `E0215` is retired and never reused.
+    VacuousOverride,
     /// A concrete node leaves an ancestor's required field unsupplied.
     RequiredFieldUnsatisfied,
     /// A concrete node's effective value contradicts an ancestor's declared
@@ -180,6 +190,7 @@ impl Code {
             Code::UndeclaredField => "W0301",
             Code::InertContribution => "W0303",
             Code::ForcedWrite => "W0304",
+            Code::VacuousOverride => "W0305",
             Code::DuplicateNamespace => "E0230",
             Code::BadHeaderValue => "E0231",
             Code::UnresolvedImport => "E0240",
@@ -194,7 +205,8 @@ impl Code {
             Code::AnchorShadowed
             | Code::InertContribution
             | Code::UndeclaredField
-            | Code::ForcedWrite => Severity::Warning,
+            | Code::ForcedWrite
+            | Code::VacuousOverride => Severity::Warning,
             _ => Severity::Error,
         }
     }
@@ -228,6 +240,7 @@ impl Code {
             Code::UndeclaredField,
             Code::InertContribution,
             Code::ForcedWrite,
+            Code::VacuousOverride,
             Code::ReservedTag,
             Code::EdgeWithoutConnections,
             Code::EdgeMemberShape,

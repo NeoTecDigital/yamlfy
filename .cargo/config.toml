@@ -1,0 +1,12 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# A build directory of this project's own. The global config points target-dir
+# at a shared cache, which another process can write to -- that produced three
+# phantom failures in one session: a `cargo clean` refused for permissions, and
+# twice a "no method named ..." against a method plainly present in source.
+# Stale test binaries from an earlier state can also be counted, so a green
+# suite was not evidence of anything. Correctness needs a cache nobody else
+# touches.
+[build]
+target-dir = "target"

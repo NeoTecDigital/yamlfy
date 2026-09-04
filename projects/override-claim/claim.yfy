@@ -1,0 +1,26 @@
+# Written by Richard Christopher, Copyright 2026 NeoTec, LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+--- !yfi/header
+version: 1
+namespace: ovl
+---
+# `<<: override P` is a runtime claim and changes no resolved value at compile
+# time: `Plain` and `Claimed` differ by one word and by nothing else, and
+# `Base` holds exactly what it wrote. What the claim leaves behind is a flag on
+# the inclusion edge of the image, which a runtime reads and the compiler never
+# executes.
+Base: !type &Base
+  pub port: !!int 80
+Plain: !node &Plain
+  <<: Base
+  pub host: local
+Claimed: !node &Claimed
+  <<: override Base
+  pub host: local
+# A data position is not a reach unless it says so (D4.12), and the keyword
+# does not make it one: these are strings. Reading the prefix here would turn
+# `region: override eu-west` into a path on the strength of a word the author
+# wrote as data.
+Loose: !node &Loose
+  pub region: override eu-west
+  pub note: override Base

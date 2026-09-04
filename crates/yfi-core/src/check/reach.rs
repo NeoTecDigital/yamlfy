@@ -17,6 +17,13 @@
 //! line and answers with a header's fix. A path naming a definition in its own
 //! file needs neither check. The fix is a different keyword — `brute`, below —
 //! or the plain path, which asks for nothing.
+//!
+//! **`override` is asked the same question by the same predicate** (D4.14).
+//! Both of its spellings are writes — one at compile time, one reserved for a
+//! runtime — so both set the capability flag and arrive here, and no second
+//! gate is written for them. What changes is only which word the message names,
+//! because telling an author to drop a `!ref` they did not write sends them
+//! looking for a token that is not there.
 
 use yfi_syntax::{Code, Diagnostic, Diagnostics, FileId, NodeId, Span};
 
@@ -93,20 +100,24 @@ fn unwritable(
 ) -> Diagnostic {
     let scopes = ctx.project.scopes();
     let at: Option<Span> = scopes.get(blocked.0).and_then(|scope| scope.mutability_span);
+    // The **stronger** declaration is named when both are written, because
+    // dropping `!ref` from `extends: !ref override P` leaves the write standing
+    // and the refusal unchanged.
+    let declared = if reference.overrides { "override" } else { "!ref" };
     Diagnostic::new(
         Code::RefNotWritable,
         reference.span,
         format!(
-            "`!ref {}` declares that this context intends to modify the target, and the target \
-             may not be written from here",
+            "`{declared} {}` declares that this context intends to modify the target, and the \
+             target may not be written from here",
             reference.text
         ),
     )
     .with_note(composed(scopes, blocked, "immutable"), at)
     .with_note(
         format!(
-            "drop the `!ref` if `{}` is meant to be read rather than changed; a plain path asks \
-             for nothing",
+            "drop the `{declared}` if `{}` is meant to be read rather than changed; a plain path \
+             asks for nothing",
             reference.text
         ),
         None,

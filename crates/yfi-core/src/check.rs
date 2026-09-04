@@ -207,6 +207,7 @@ pub(crate) mod testing {
                 operands: vec![Operand {
                     node: NodeId(*to),
                     form: if *extended { OperandForm::Ref } else { OperandForm::Alias },
+                    overrides: false,
                     target: (FileId(0), NodeId(*to)),
                     span: span(),
                 }],
