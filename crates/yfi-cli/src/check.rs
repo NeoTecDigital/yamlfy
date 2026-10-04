@@ -59,7 +59,11 @@ use yfi_syntax::{parse_file, Diagnostics, FileId, Severity, SeverityMap, SourceM
 /// Check every path. Exit code is 0 when no error-level diagnostic was raised
 /// for the paths asked about, 1 otherwise.
 pub fn run(config: &Config, paths: &[PathBuf], dump: bool, root: Option<&Path>) -> ExitCode {
-    let options = DiscoverOptions { parse: config.parse_options(), ..DiscoverOptions::default() };
+    let options = DiscoverOptions {
+        parse: config.parse_options(),
+        root_scope: config.project.name.clone(),
+        ..DiscoverOptions::default()
+    };
     let mut run = Run {
         severities: options.parse.severities.clone(),
         options,

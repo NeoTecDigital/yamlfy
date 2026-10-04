@@ -156,3 +156,32 @@ fn every_diagnostic_code_is_configurable() {
         assert!(yfi_config::known_codes().contains(code.as_str()), "{code} must be listed");
     }
 }
+
+#[test]
+fn the_project_name_is_read_from_the_file_and_is_unset_by_default() {
+    let env = StaticEnvironment::default();
+    let defaults = Config::load(None, &env).expect("defaults load");
+    assert!(defaults.project.name.is_none(), "unset means the directory name, as before");
+
+    let file = write_config("[project]\nname = \"pdl\"\n");
+    let config = Config::load(Some(file.path()), &env).expect("file loads");
+    assert_eq!(config.project.name.as_deref(), Some("pdl"));
+}
+
+#[test]
+fn a_project_name_that_is_not_a_scope_name_is_rejected() {
+    let env = StaticEnvironment::default();
+    for bad in ["\"\"", "\"a::b\"", "\"a/b\"", "\"a b\""] {
+        let file = write_config(&format!("[project]\nname = {bad}\n"));
+        let error = Config::load(Some(file.path()), &env).expect_err("must fail");
+        assert!(error.to_string().starts_with("project.name:"), "{bad}: {error}");
+    }
+}
+
+#[test]
+fn an_unknown_project_key_is_rejected() {
+    let file = write_config("[project]\nroot = \"pdl\"\n");
+    let env = StaticEnvironment::default();
+    let error = Config::load(Some(file.path()), &env).expect_err("typo must fail");
+    assert!(error.to_string().contains("cannot parse"), "{error}");
+}

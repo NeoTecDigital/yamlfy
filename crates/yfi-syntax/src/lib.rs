@@ -45,6 +45,7 @@ pub mod anchor;
 pub mod ast;
 pub mod diagnostic;
 pub mod front;
+pub mod ident;
 pub mod mapping;
 pub mod parse;
 pub mod span;
@@ -57,6 +58,7 @@ pub use anchor::{AnchorDef, AnchorId, AnchorTable, Source};
 pub use ast::{AliasRef, Ast, Document, Entry, Node, NodeId, NodeKind, Scalar, ScalarStyle, Tag};
 pub use diagnostic::{Code, Diagnostic, Diagnostics, Severity, SeverityMap};
 pub use front::{Block, BlockKind, Dialect};
+pub use ident::{is_identifier, IDENTIFIER_RULE};
 pub use mapping::{is_merge_key, MERGE_KEY};
 pub use parse::{
     anchor_names, parse, parse_file, parse_with_imports, Import, ParseOptions, Parsed,

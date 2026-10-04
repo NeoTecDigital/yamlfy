@@ -15,7 +15,7 @@
 //! would break the corpus and freeze the format.
 
 use tracing::debug;
-use yfi_syntax::{Ast, Code, Diagnostic, Diagnostics, NodeId, Span};
+use yfi_syntax::{is_identifier, Ast, Code, Diagnostic, Diagnostics, NodeId, Span};
 
 use crate::scope::{Mutability, Visibility};
 use crate::tags::{classify, TagKind};
@@ -187,7 +187,7 @@ fn namespace_fault(text: &str) -> Option<&'static str> {
         if component.is_empty() {
             return Some("it has an empty component");
         }
-        if !component.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        if !is_identifier(component) {
             return Some("components may only contain letters, digits, `_` and `-`");
         }
     }

@@ -286,3 +286,17 @@ fn a_deny_flag_reaches_the_override_warning() {
     let allowed = yamlfy(&["--allow", "W0305", "check", path.to_str().unwrap()]);
     assert!(!stdout(&allowed).contains("W0305"), "{}", stdout(&allowed));
 }
+
+#[test]
+fn a_project_name_that_is_not_a_scope_name_is_a_configuration_error() {
+    let path = std::env::temp_dir().join(format!("yamlfy-cli-{}.toml", std::process::id()));
+    std::fs::write(&path, "[project]\nname = \"a::b\"\n").expect("scratch config writable");
+    let config = path.display().to_string();
+    let target = project("nested-namespaces").display().to_string();
+    let output = yamlfy(&["--config", &config, "check", &target]);
+    let _ = std::fs::remove_file(&path);
+    let text = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    assert_eq!(output.status.code(), Some(2), "{text}");
+    assert!(text.contains("project.name"), "{text}");
+}

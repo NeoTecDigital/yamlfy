@@ -93,6 +93,12 @@ pub struct DiscoverOptions {
     pub data_extensions: Vec<String>,
     /// Options handed to the parser for every file.
     pub parse: ParseOptions,
+    /// The root scope's name. `None` names it after the root directory, as it
+    /// always was; `Some` fixes it so the same project yields the same scope
+    /// paths at every path on every machine. The caller has validated it as an
+    /// identifier (`yamlfy.toml`'s `[project] name`): discovery raises no
+    /// diagnostic of its own about it, because there is no file to point at.
+    pub root_scope: Option<String>,
 }
 
 impl Default for DiscoverOptions {
@@ -101,6 +107,7 @@ impl Default for DiscoverOptions {
             source_extensions: owned(&DEFAULT_SOURCE_EXTENSIONS),
             data_extensions: owned(&DEFAULT_DATA_EXTENSIONS),
             parse: ParseOptions::default(),
+            root_scope: None,
         }
     }
 }
@@ -271,7 +278,8 @@ pub fn discover_in(
     let mut sources = sources;
     let (base, candidates) = candidates(root, options, &mut sources, &mut diagnostics);
     let mut scopes = ScopeTree::new();
-    let directories = directory_scopes(&base, &candidates, &mut scopes);
+    let directories =
+        directory_scopes(&base, options.root_scope.as_deref(), &candidates, &mut scopes);
     let (mut files, mut per_file) = load(&candidates, &directories, options, &mut sources);
 
     // Claims first: visibility is declared in headers, and the binding pass
@@ -364,14 +372,18 @@ fn unreadable(sources: &mut SourceMap, diagnostics: &mut Diagnostics, path: &Pat
 /// Create one scope per directory, parents before children. A `BTreeMap` keyed
 /// by relative path gives that ordering for free: a directory's path is a
 /// prefix of every path beneath it, so it sorts first.
+///
+/// The root is named `root_scope` when the project states one, else after
+/// `base`'s own directory.
 fn directory_scopes(
     base: &Path,
+    root_scope: Option<&str>,
     candidates: &[Candidate],
     scopes: &mut ScopeTree,
 ) -> BTreeMap<PathBuf, ScopeId> {
     let mut wanted: BTreeMap<PathBuf, ScopeId> = BTreeMap::new();
-    let root_name = base.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let root = scopes.push(None, root_name);
+    let directory = base.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let root = scopes.push(None, root_scope.unwrap_or(directory));
     wanted.insert(PathBuf::new(), root);
     for candidate in candidates {
         let mut chain: Vec<PathBuf> = Vec::new();

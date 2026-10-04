@@ -74,9 +74,22 @@ impl Default for DiagnosticsConfig {
     }
 }
 
+/// The project's own identity, independent of where it is checked out.
+#[derive(Clone, Debug, Default)]
+pub struct ProjectConfig {
+    /// The root scope's name. `None` means the root directory's name, which is
+    /// what the scope tree has always used; a project that states one gets the
+    /// same scope paths — and therefore the same structural ids — at every
+    /// path on every machine. There is deliberately no environment layer for
+    /// this key: an identity a shell could change would defeat its purpose.
+    pub name: Option<String>,
+}
+
 /// The resolved configuration.
 #[derive(Clone, Debug, Default)]
 pub struct Config {
+    /// The project's identity.
+    pub project: ProjectConfig,
     /// Logging.
     pub log: LogConfig,
     /// Diagnostics.
@@ -141,9 +154,20 @@ pub fn known_codes() -> String {
 #[serde(deny_unknown_fields)]
 pub(crate) struct FileConfig {
     #[serde(default)]
+    pub(crate) project: Option<FileProjectConfig>,
+    #[serde(default)]
     pub(crate) log: Option<log::FileLogConfig>,
     #[serde(default)]
     pub(crate) diagnostics: Option<FileDiagnosticsConfig>,
+}
+
+/// The on-disk project section.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FileProjectConfig {
+    /// The root scope's name, for example `name = "pdl"`.
+    #[serde(default)]
+    pub(crate) name: Option<String>,
 }
 
 /// The on-disk diagnostics section.

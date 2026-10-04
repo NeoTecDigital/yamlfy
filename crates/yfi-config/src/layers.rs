@@ -3,7 +3,7 @@
 
 //! Applying the file and environment layers onto the defaults.
 
-use yfi_syntax::{Code, Severity};
+use yfi_syntax::{is_identifier, Code, Severity, IDENTIFIER_RULE};
 
 use crate::env::Environment;
 use crate::log::LogFormat;
@@ -15,6 +15,17 @@ pub(crate) const ENV_PREFIX: &str = "YAMLFY_";
 pub(crate) const ENV_SEVERITY_PREFIX: &str = "SEVERITY_";
 
 pub(crate) fn apply_file(config: &mut Config, file: FileConfig) -> Result<(), ConfigError> {
+    if let Some(name) = file.project.and_then(|project| project.name) {
+        if !is_identifier(&name) {
+            return Err(ConfigError::Value {
+                key: "project.name".to_owned(),
+                message: format!(
+                    "`{name}` is not a scope name: one non-empty run of {IDENTIFIER_RULE}"
+                ),
+            });
+        }
+        config.project.name = Some(name);
+    }
     if let Some(log) = file.log {
         apply_file_log(config, log)?;
     }

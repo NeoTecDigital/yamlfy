@@ -7,7 +7,9 @@ mod common;
 
 use std::collections::HashSet;
 
-use yfi_core::{discover_in, DiscoverOptions, FileClass, Mutability, ScopeKind, Visibility};
+use yfi_core::{
+    discover, discover_in, DiscoverOptions, FileClass, Mutability, ScopeKind, Visibility,
+};
 use yfi_syntax::{Code, FileId, SourceMap};
 
 #[test]
@@ -271,4 +273,80 @@ fn rank_follows_the_relative_path_not_where_a_link_points() {
         ["links/aaa.yfy", "links/zzz.yfy"],
         "ranking by canonicalized path would order these by their targets instead"
     );
+}
+
+/// A copy of a project fixture under a directory of the given name, removed on
+/// drop. The scope tree names its root after the root directory unless told
+/// otherwise, so proving the alternative needs the same tree at two names.
+/// Each copy gets a parent of its own: tests run on parallel threads, and two
+/// of them asking for `alpha` must not share one.
+struct Renamed(std::path::PathBuf);
+
+impl Renamed {
+    fn of(fixture: &str, name: &str) -> Self {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let unique = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let parent =
+            std::env::temp_dir().join(format!("yfi-discover-{}-{unique}", std::process::id()));
+        let dir = parent.join(name);
+        copy_tree(&common::projects().join(fixture), &dir);
+        Renamed(dir)
+    }
+}
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).expect("scratch directory");
+    for entry in std::fs::read_dir(from).expect("fixture readable") {
+        let entry = entry.expect("directory entry");
+        let target = to.join(entry.file_name());
+        if entry.file_type().expect("file type").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).expect("fixture file copies");
+        }
+    }
+}
+
+impl Drop for Renamed {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+        if let Some(parent) = self.0.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
+    }
+}
+
+fn qualified_scopes(project: &yfi_core::Project) -> Vec<String> {
+    project.scopes().scopes().iter().map(|s| project.scopes().qualified(s.id)).collect()
+}
+
+#[test]
+fn a_stated_root_scope_makes_the_scope_paths_independent_of_the_directory_name() {
+    let alpha = Renamed::of("nested-namespaces", "alpha");
+    let beta = Renamed::of("nested-namespaces", "beta");
+    let options =
+        DiscoverOptions { root_scope: Some("acme".to_owned()), ..DiscoverOptions::default() };
+    let first = discover(&alpha.0, &options);
+    let second = discover(&beta.0, &options);
+
+    assert!(first.diagnostics().is_empty() && second.diagnostics().is_empty());
+    assert_eq!(qualified_scopes(&first), ["acme", "acme/billing", "acme/net"]);
+    assert_eq!(qualified_scopes(&first), qualified_scopes(&second));
+    assert_eq!(common::relative_paths(&first), common::relative_paths(&second));
+    let root = first.scopes().get(first.scopes().root().expect("root")).expect("root scope");
+    assert_eq!(root.kind, ScopeKind::Root);
+    assert_eq!(&*root.name, "acme");
+}
+
+#[test]
+fn without_a_stated_root_scope_the_directory_name_is_the_root_as_before() {
+    let alpha = Renamed::of("nested-namespaces", "alpha");
+    let beta = Renamed::of("nested-namespaces", "beta");
+    let options = DiscoverOptions::default();
+    let first = discover(&alpha.0, &options);
+    let second = discover(&beta.0, &options);
+
+    assert_eq!(qualified_scopes(&first), ["alpha", "alpha/billing", "alpha/net"]);
+    assert_eq!(qualified_scopes(&second), ["beta", "beta/billing", "beta/net"]);
+    assert_ne!(qualified_scopes(&first), qualified_scopes(&second));
 }

@@ -3086,6 +3086,20 @@ On each axis, a scope that does not state a value **inherits its parent's**; a s
 that states one governs itself and all its descendants. The root scope has no parent and
 therefore states both: **`private`** and **`immutable`**.
 
+The root scope is **named after the root directory** unless the project names it itself,
+in `yamlfy.toml`:
+
+```toml
+[project]
+name = "pdl"
+```
+
+The name is one namespace component — a non-empty run of `[A-Za-z0-9_-]` — and anything
+else is refused at load. Every qualified scope path (`pdl/billing`) starts with it, so a
+project that states one derives the same paths at every checkout path on every machine;
+one that does not is unchanged byte for byte. There is deliberately no `YAMLFY_*` layer for
+this key: an identity a shell could change would defeat its purpose.
+
 `fixtures/valid/header-document.yfy` carries both keys on a header document
 (`visibility: public`, `mutability: immutable`). Any other value on either key is
 `E0231`.

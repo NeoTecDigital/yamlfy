@@ -119,7 +119,9 @@ project of one file.
 
 Configuration is `yamlfy.toml` and `YAMLFY_*`; every diagnostic code can be set to
 `allow`, `warning` or `error`, so a project that wants a closed world writes
-`--deny W0301` and gets it.
+`--deny W0301` and gets it. A project that must mean the same thing at every path names
+its root scope — `[project] name = "pdl"` — and its scope paths stop depending on what the
+checkout directory happens to be called; left unset, the root is the directory's name.
 
 ## Examples
 

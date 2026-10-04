@@ -139,7 +139,8 @@ pub struct Scope {
     pub parent: Option<ScopeId>,
     /// Root or directory.
     pub kind: ScopeKind,
-    /// The directory's own name. The root's name is its directory name.
+    /// The directory's own name. The root's name is its directory name unless
+    /// the project stated one (`DiscoverOptions::root_scope`).
     pub name: Box<str>,
     /// The namespace headers in this directory claimed.
     pub namespace: Option<Box<str>>,
