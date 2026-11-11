@@ -50,8 +50,7 @@ fn definition_span(ctx: &Ctx, file: FileId, name: &str) -> Option<Span> {
     ast.anchors()
         .defs()
         .iter()
-        .filter(|def| !def.is_imported() && &*def.name == name)
-        .next_back()
+        .rfind(|def| !def.is_imported() && &*def.name == name)
         .map(|def| def.span)
 }
 

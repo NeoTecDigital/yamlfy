@@ -116,8 +116,7 @@ pub fn declaration(project: &Project, file: FileId, name: &str) -> NodeId {
     ast.anchors()
         .defs()
         .iter()
-        .filter(|d| !d.is_imported() && &*d.name == name)
-        .next_back()
+        .rfind(|d| !d.is_imported() && &*d.name == name)
         .unwrap_or_else(|| panic!("`&{name}` is not defined in {file:?}"))
         .node
 }
